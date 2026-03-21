@@ -5,21 +5,16 @@ import { useAuth } from '../contexts/AuthContext.jsx'
 
 const DOC_TYPES = [
   { value: 'manual', label: 'Manual' },
-  { value: 'technical_doc', label: 'Documento Técnico' },
+  { value: 'technical_doc', label: 'Doc. Técnico' },
   { value: 'procedure', label: 'Procedimento' },
   { value: 'bulletin', label: 'Boletim' },
   { value: 'other', label: 'Outro' }
 ]
+const TYPE_COLORS = { manual: 'badge-blue', technical_doc: 'badge-green', procedure: 'badge-yellow', bulletin: 'badge-blue', other: 'badge-green' }
 
-const TYPE_COLORS = {
-  manual: 'badge-blue',
-  technical_doc: 'badge-green',
-  procedure: 'badge-yellow',
-  bulletin: 'badge-blue',
-  other: 'badge-green'
-}
-
-// ── UPLOAD MODAL ──────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// UPLOAD MODAL
+// ─────────────────────────────────────────────────────────────
 function UploadModal({ tree, onClose, onSuccess }) {
   const [file, setFile] = useState(null)
   const [drag, setDrag] = useState(false)
@@ -31,46 +26,41 @@ function UploadModal({ tree, onClose, onSuccess }) {
   const [error, setError] = useState('')
   const inputRef = useRef()
 
-  const selectedSpecialty = tree.find(s => s.id === form.specialtyId)
-
   useEffect(() => {
     if (form.specialtyId) {
-      setTechnologies(selectedSpecialty?.technologies || [])
+      const s = tree.find(x => x.id === form.specialtyId)
+      setTechnologies(s?.technologies || [])
       setForm(f => ({ ...f, technologyId: '', manufacturerId: '', equipmentModelId: '' }))
       setManufacturers([]); setModels([])
     }
   }, [form.specialtyId])
-
   useEffect(() => {
     if (form.technologyId) {
-      const tech = technologies.find(t => t.id === form.technologyId)
-      setManufacturers(tech?.manufacturers || [])
+      const t = technologies.find(x => x.id === form.technologyId)
+      setManufacturers(t?.manufacturers || [])
       setForm(f => ({ ...f, manufacturerId: '', equipmentModelId: '' }))
       setModels([])
     }
   }, [form.technologyId])
-
   useEffect(() => {
     if (form.manufacturerId) {
-      const mfr = manufacturers.find(m => m.id === form.manufacturerId)
-      setModels(mfr?.equipment_models || [])
+      const m = manufacturers.find(x => x.id === form.manufacturerId)
+      setModels(m?.equipment_models || [])
       setForm(f => ({ ...f, equipmentModelId: '' }))
     }
   }, [form.manufacturerId])
 
   const handleFile = (f) => {
     if (!f) return
-    const allowed = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain']
-    if (!allowed.includes(f.type)) { setError('Formato não suportado. Use PDF, DOCX ou TXT.'); return }
-    setFile(f)
-    setError('')
+    const ok = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain']
+    if (!ok.includes(f.type)) { setError('Use PDF, DOCX ou TXT'); return }
+    setFile(f); setError('')
     if (!form.title) setForm(p => ({ ...p, title: f.name.replace(/\.[^.]+$/, '') }))
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!file) { setError('Selecione um arquivo'); return }
-    if (!form.title.trim()) { setError('Informe o título'); return }
     setLoading(true); setError('')
     try {
       const fd = new FormData()
@@ -78,101 +68,66 @@ function UploadModal({ tree, onClose, onSuccess }) {
       Object.entries(form).forEach(([k, v]) => { if (v) fd.append(k, v) })
       const result = await api.uploadDocument(fd)
       onSuccess(result.document)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
+    } catch (err) { setError(err.message) }
+    finally { setLoading(false) }
   }
 
   return (
-    <div style={modal.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={modal.box}>
-        <div style={modal.header}>
+    <div style={M.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={M.box}>
+        <div style={M.header}>
           <h2 style={{ fontSize: 18, fontWeight: 700 }}>Upload de Documento</h2>
-          <button onClick={onClose} style={modal.close}>✕</button>
+          <button onClick={onClose} style={M.close}>✕</button>
         </div>
-
-        <form onSubmit={handleSubmit} style={modal.body}>
-          {/* Drop zone */}
-          <div
-            style={{ ...modal.dropzone, ...(drag ? modal.dropzoneDrag : {}), ...(file ? modal.dropzoneOk : {}) }}
+        <form onSubmit={handleSubmit} style={M.body}>
+          <div style={{ ...M.drop, ...(drag ? M.dropDrag : {}), ...(file ? M.dropOk : {}) }}
             onClick={() => inputRef.current?.click()}
             onDragOver={e => { e.preventDefault(); setDrag(true) }}
             onDragLeave={() => setDrag(false)}
-            onDrop={e => { e.preventDefault(); setDrag(false); handleFile(e.dataTransfer.files[0]) }}
-          >
+            onDrop={e => { e.preventDefault(); setDrag(false); handleFile(e.dataTransfer.files[0]) }}>
             <input ref={inputRef} type="file" accept=".pdf,.docx,.txt" hidden onChange={e => handleFile(e.target.files[0])} />
-            {file ? (
-              <>
-                <span style={{ fontSize: 32 }}>📄</span>
-                <p style={{ fontWeight: 600 }}>{file.name}</p>
-                <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>{(file.size / 1024).toFixed(0)} KB</p>
-              </>
-            ) : (
-              <>
-                <span style={{ fontSize: 32 }}>⬆️</span>
-                <p style={{ fontWeight: 500 }}>Clique ou arraste o arquivo</p>
-                <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>PDF, DOCX ou TXT • Máx. 50 MB</p>
-              </>
-            )}
+            {file ? (<><span style={{ fontSize: 32 }}>📄</span><p style={{ fontWeight: 600 }}>{file.name}</p><p style={{ color: 'var(--text-muted)', fontSize: 12 }}>{(file.size / 1024).toFixed(0)} KB</p></>)
+              : (<><span style={{ fontSize: 32 }}>⬆️</span><p style={{ fontWeight: 500 }}>Clique ou arraste o arquivo</p><p style={{ color: 'var(--text-muted)', fontSize: 12 }}>PDF, DOCX ou TXT • Máx. 50 MB</p></>)}
           </div>
-
-          {/* Título e Tipo */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={modal.label}>Título *</label>
-              <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
-                placeholder="Nome do documento" style={modal.input} required />
-            </div>
-            <div>
-              <label style={modal.label}>Tipo</label>
-              <select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))} style={modal.select}>
+            <div><label style={M.label}>Título *</label><input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} style={M.input} required /></div>
+            <div><label style={M.label}>Tipo</label>
+              <select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))} style={M.select}>
                 {DOC_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
           </div>
-
-          {/* Categorização */}
-          <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Categorização</p>
+          <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Categorização</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={modal.label}>Especialidade</label>
-              <select value={form.specialtyId} onChange={e => setForm(p => ({ ...p, specialtyId: e.target.value }))} style={modal.select}>
+            <div><label style={M.label}>Especialidade</label>
+              <select value={form.specialtyId} onChange={e => setForm(p => ({ ...p, specialtyId: e.target.value }))} style={M.select}>
                 <option value="">Geral</option>
                 {tree.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
-            <div>
-              <label style={modal.label}>Tecnologia</label>
-              <select value={form.technologyId} onChange={e => setForm(p => ({ ...p, technologyId: e.target.value }))} style={modal.select} disabled={!technologies.length}>
+            <div><label style={M.label}>Tecnologia</label>
+              <select value={form.technologyId} onChange={e => setForm(p => ({ ...p, technologyId: e.target.value }))} style={M.select} disabled={!technologies.length}>
                 <option value="">Geral</option>
                 {technologies.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
-            <div>
-              <label style={modal.label}>Fabricante</label>
-              <select value={form.manufacturerId} onChange={e => setForm(p => ({ ...p, manufacturerId: e.target.value }))} style={modal.select} disabled={!manufacturers.length}>
+            <div><label style={M.label}>Fabricante</label>
+              <select value={form.manufacturerId} onChange={e => setForm(p => ({ ...p, manufacturerId: e.target.value }))} style={M.select} disabled={!manufacturers.length}>
                 <option value="">Todos</option>
                 {manufacturers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
             </div>
-            <div>
-              <label style={modal.label}>Modelo</label>
-              <select value={form.equipmentModelId} onChange={e => setForm(p => ({ ...p, equipmentModelId: e.target.value }))} style={modal.select} disabled={!models.length}>
+            <div><label style={M.label}>Modelo</label>
+              <select value={form.equipmentModelId} onChange={e => setForm(p => ({ ...p, equipmentModelId: e.target.value }))} style={M.select} disabled={!models.length}>
                 <option value="">Todos</option>
-                {models.map(m => <option key={m.id} value={m.id}>{m.name} {m.model_code ? `(${m.model_code})` : ''}</option>)}
+                {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
             </div>
           </div>
-
           {error && <p style={{ color: 'var(--danger)', fontSize: 13 }}>{error}</p>}
-
           <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
             <button type="button" onClick={onClose} className="btn btn-ghost">Cancelar</button>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Enviando...' : '⬆️ Enviar documento'}
-            </button>
+            <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? 'Enviando...' : '⬆️ Enviar'}</button>
           </div>
         </form>
       </div>
@@ -180,21 +135,24 @@ function UploadModal({ tree, onClose, onSuccess }) {
   )
 }
 
-// ── ADMIN PRINCIPAL ───────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// ADMIN PRINCIPAL
+// ─────────────────────────────────────────────────────────────
 export default function Admin() {
   const navigate = useNavigate()
   const { user, signOut } = useAuth()
-  const [tab, setTab] = useState('documents')
-  const [dashData, setDashData] = useState({})
-  const [users, setUsers] = useState([])
-  const [issues, setIssues] = useState([])
-  const [whatsapp, setWhatsapp] = useState([])
-  const [documents, setDocuments] = useState([])
+  const [tab, setTab] = useState('requests')
   const [tree, setTree] = useState([])
+  const [requests, setRequests] = useState([])
+  const [authorizedEmails, setAuthorizedEmails] = useState([])
+  const [users, setUsers] = useState([])
+  const [documents, setDocuments] = useState([])
+  const [issues, setIssues] = useState([])
+  const [dashData, setDashData] = useState({})
   const [docFilters, setDocFilters] = useState({ specialtyId: '', technologyId: '', manufacturerId: '' })
   const [showUpload, setShowUpload] = useState(false)
-  const [newWA, setNewWA] = useState({ phoneNumber: '', name: '' })
-  const [waLoading, setWaLoading] = useState(false)
+  const [newEmail, setNewEmail] = useState({ email: '', name: '' })
+  const [emailLoading, setEmailLoading] = useState(false)
 
   useEffect(() => {
     api.getTree().then(r => setTree(r.tree || []))
@@ -202,17 +160,54 @@ export default function Admin() {
     api.getDocuments().then(r => setDocuments(r.documents || [])).catch(() => {})
     api.getUsers().then(r => setUsers(r.users || [])).catch(() => {})
     api.getFieldIssues().then(r => setIssues(r.issues || [])).catch(() => {})
-    api.getWhatsappUsers().then(r => setWhatsapp(r.users || [])).catch(() => {})
+    fetchRequests()
+    fetchAuthorizedEmails()
   }, [])
 
-  // Refiltrar documentos quando filtros mudam
   useEffect(() => {
-    const params = {}
-    if (docFilters.specialtyId) params.specialtyId = docFilters.specialtyId
-    if (docFilters.technologyId) params.technologyId = docFilters.technologyId
-    if (docFilters.manufacturerId) params.manufacturerId = docFilters.manufacturerId
-    api.getDocuments(params).then(r => setDocuments(r.documents || [])).catch(() => {})
+    const p = {}
+    if (docFilters.specialtyId) p.specialtyId = docFilters.specialtyId
+    if (docFilters.technologyId) p.technologyId = docFilters.technologyId
+    if (docFilters.manufacturerId) p.manufacturerId = docFilters.manufacturerId
+    api.getDocuments(p).then(r => setDocuments(r.documents || [])).catch(() => {})
   }, [docFilters])
+
+  const fetchRequests = () => api.getAccessRequests().then(r => setRequests(r.requests || [])).catch(() => {})
+  const fetchAuthorizedEmails = () => api.getAuthorizedEmails().then(r => setAuthorizedEmails(r.emails || [])).catch(() => {})
+
+  const approveRequest = async (id) => {
+    await api.reviewAccessRequest(id, 'approved')
+    setRequests(r => r.map(x => x.id === id ? { ...x, status: 'approved' } : x))
+  }
+  const rejectRequest = async (id) => {
+    await api.reviewAccessRequest(id, 'rejected')
+    setRequests(r => r.map(x => x.id === id ? { ...x, status: 'rejected' } : x))
+  }
+  const deleteRequest = async (id) => {
+    await api.deleteAccessRequest(id)
+    setRequests(r => r.filter(x => x.id !== id))
+  }
+
+  const addAuthorizedEmail = async (e) => {
+    e.preventDefault()
+    setEmailLoading(true)
+    try {
+      const { email: added } = await api.addAuthorizedEmail(newEmail)
+      setAuthorizedEmails(a => [added, ...a])
+      setNewEmail({ email: '', name: '' })
+    } catch (err) { alert(err.message) }
+    finally { setEmailLoading(false) }
+  }
+
+  const removeAuthorizedEmail = async (id) => {
+    await api.removeAuthorizedEmail(id)
+    setAuthorizedEmails(a => a.filter(x => x.id !== id))
+  }
+
+  const updateRole = async (userId, role) => {
+    await api.updateUser(userId, { role })
+    setUsers(u => u.map(x => x.id === userId ? { ...x, role } : x))
+  }
 
   const handleDeleteDoc = async (id) => {
     if (!confirm('Remover este documento?')) return
@@ -225,170 +220,145 @@ export default function Admin() {
     window.open(url, '_blank')
   }
 
-  const addWhatsapp = async (e) => {
-    e.preventDefault()
-    setWaLoading(true)
-    try {
-      const { user: u } = await api.addWhatsappUser(newWA)
-      setWhatsapp(w => [u, ...w])
-      setNewWA({ phoneNumber: '', name: '' })
-    } catch (err) { alert(err.message) }
-    finally { setWaLoading(false) }
-  }
-
-  const updateRole = async (userId, role) => {
-    await api.updateUser(userId, { role })
-    setUsers(u => u.map(x => x.id === userId ? { ...x, role } : x))
-  }
-
-  // Tecnologias disponíveis para filtro
-  const filterTechnologies = tree.find(s => s.id === docFilters.specialtyId)?.technologies || []
-  const filterManufacturers = filterTechnologies.find(t => t.id === docFilters.technologyId)?.manufacturers || []
+  const pendingCount = requests.filter(r => r.status === 'pending').length
+  const filterTechs = tree.find(s => s.id === docFilters.specialtyId)?.technologies || []
+  const filterMfrs = filterTechs.find(t => t.id === docFilters.technologyId)?.manufacturers || []
 
   const TABS = [
-    { key: 'documents', label: '📄 Documentos', count: documents.length },
-    { key: 'dashboard', label: '📊 Dashboard' },
-    { key: 'users', label: '👥 Usuários', count: users.length },
-    { key: 'issues', label: '🔧 Problemas de Campo', count: issues.length },
-    { key: 'whatsapp', label: '📱 WhatsApp', count: whatsapp.length },
+    { key: 'requests', label: 'Solicitações', icon: '🕐', count: pendingCount || requests.length },
+    { key: 'emails', label: 'Emails Autorizados', icon: '✉️', count: authorizedEmails.length },
+    { key: 'users', label: 'Usuários', icon: '👥', count: users.length },
+    { key: 'documents', label: 'Documentos', icon: '📄', count: documents.length },
+    { key: 'gallery', label: 'Galeria', icon: '🖼️', count: 0 },
+    { key: 'stats', label: 'Estatísticas', icon: '📊' },
+    { key: 'contribute', label: 'Contribuir', icon: '✏️', count: issues.length },
   ]
 
   return (
-    <div style={styles.layout}>
-      {/* Sidebar */}
-      <aside style={styles.sidebar}>
-        <div style={styles.sidebarHeader}>
+    <div style={S.layout}>
+      {/* ── Sidebar ── */}
+      <aside style={S.sidebar}>
+        <div style={S.sidebarTop}>
           <span style={{ fontSize: 22 }}>⚡</span>
           <div>
             <p style={{ fontWeight: 700, fontSize: 14 }}>EAS Expert</p>
             <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Administração</p>
           </div>
         </div>
-        <nav style={styles.nav}>
+        <nav style={S.nav}>
           {TABS.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              style={{ ...styles.navItem, ...(tab === t.key ? styles.navActive : {}) }}>
-              <span style={{ flex: 1, textAlign: 'left' }}>{t.label}</span>
-              {t.count !== undefined && <span style={styles.badge}>{t.count}</span>}
+              style={{ ...S.navItem, ...(tab === t.key ? S.navActive : {}) }}>
+              <span>{t.icon} {t.label}</span>
+              {t.count !== undefined && <span style={{ ...S.pill, ...(t.key === 'requests' && pendingCount > 0 ? S.pillOrange : {}) }}>{t.count}</span>}
             </button>
           ))}
         </nav>
-        <div style={styles.sidebarFooter}>
-          <button onClick={() => navigate('/')} style={styles.footerBtn}>🏠 Dashboard</button>
-          <button onClick={signOut} style={styles.footerBtn}>↩ Sair</button>
+        <div style={S.sidebarBottom}>
+          <button onClick={() => navigate('/')} style={S.footerBtn}>🏠 Dashboard</button>
+          <button onClick={signOut} style={S.footerBtn}>↩ Sair</button>
         </div>
       </aside>
 
-      {/* Main */}
-      <main style={styles.main}>
+      {/* ── Main ── */}
+      <main style={S.main}>
+        <div style={S.topBar}>
+          <h1 style={S.pageTitle}>Painel Administrativo</h1>
+          <button onClick={() => window.location.reload()} style={S.refreshBtn} title="Atualizar">🔄</button>
+        </div>
 
-        {/* ── DOCUMENTOS ── */}
-        {tab === 'documents' && (
+        {/* ─── SOLICITAÇÕES ─── */}
+        {tab === 'requests' && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-              <h1 style={styles.pageTitle}>Documentos <span style={{ color: 'var(--text-muted)', fontSize: 16 }}>{documents.length} documento(s)</span></h1>
-              <button className="btn btn-primary" onClick={() => setShowUpload(true)}>⬆️ Upload</button>
-            </div>
-
-            {/* Upload drop zone grande (quando lista vazia) */}
-            {documents.length === 0 && (
-              <div style={styles.bigDrop} onClick={() => setShowUpload(true)}>
-                <span style={{ fontSize: 40 }}>⬆️</span>
-                <p style={{ fontWeight: 500, fontSize: 16 }}>Clique para fazer upload de documentos</p>
-                <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>PDF, DOCX ou TXT • Você poderá categorizar antes de enviar</p>
-              </div>
+            {pendingCount > 0 && (
+              <div style={S.alertBanner}>🕐 {pendingCount} solicitação(ões) pendente(s) de aprovação</div>
             )}
-
-            {/* Filtros */}
-            {documents.length > 0 && (
-              <div style={styles.filterRow}>
-                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Filtrar por:</span>
-                <select value={docFilters.specialtyId} onChange={e => setDocFilters(f => ({ ...f, specialtyId: e.target.value, technologyId: '', manufacturerId: '' }))} style={styles.filterSelect}>
-                  <option value="">Todas Especialidades</option>
-                  {tree.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-                <select value={docFilters.technologyId} onChange={e => setDocFilters(f => ({ ...f, technologyId: e.target.value, manufacturerId: '' }))} style={styles.filterSelect} disabled={!filterTechnologies.length}>
-                  <option value="">Todas Tecnologias</option>
-                  {filterTechnologies.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-                <select value={docFilters.manufacturerId} onChange={e => setDocFilters(f => ({ ...f, manufacturerId: e.target.value }))} style={styles.filterSelect} disabled={!filterManufacturers.length}>
-                  <option value="">Todos Fabricantes</option>
-                  {filterManufacturers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
-                {(docFilters.specialtyId || docFilters.technologyId || docFilters.manufacturerId) && (
-                  <button onClick={() => setDocFilters({ specialtyId: '', technologyId: '', manufacturerId: '' })} style={styles.clearFilter}>✕ Limpar</button>
-                )}
-              </div>
-            )}
-
-            {/* Lista de documentos */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {documents.map(doc => (
-                <div key={doc.id} className="card" style={styles.docRow}>
-                  <div style={styles.docIcon}>📄</div>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontWeight: 600, fontSize: 14 }}>{doc.title}</p>
-                    <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-                      {doc.technologies?.name && <span className={`badge ${TYPE_COLORS[doc.type] || 'badge-blue'}`}>{doc.technologies.name}</span>}
-                      {doc.specialties?.name && !doc.technologies?.name && <span className="badge badge-green">{doc.specialties.name}</span>}
-                      {doc.manufacturers?.name && <span className="badge badge-green">{doc.manufacturers.name}</span>}
-                      {doc.equipment_models?.name && <span className="badge badge-yellow">{doc.equipment_models.name}</span>}
-                      <span className={`badge ${TYPE_COLORS[doc.type] || 'badge-blue'}`}>{DOC_TYPES.find(t => t.value === doc.type)?.label || doc.type}</span>
+            <div style={S.cardList}>
+              {requests.map(r => (
+                <div key={r.id} style={S.reqCard}>
+                  <div style={S.reqLeft}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontWeight: 600 }}>{r.name}</span>
+                      <span className={`badge ${r.status === 'approved' ? 'badge-green' : r.status === 'rejected' ? 'badge-yellow' : 'badge-yellow'}`}
+                        style={{ background: r.status === 'approved' ? 'rgba(34,197,94,0.15)' : r.status === 'rejected' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)', color: r.status === 'approved' ? '#4ade80' : r.status === 'rejected' ? '#f87171' : '#fbbf24' }}>
+                        {r.status === 'approved' ? 'Aprovado' : r.status === 'rejected' ? 'Rejeitado' : 'Pendente'}
+                      </span>
                     </div>
-                    <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>
-                      Por {doc.profiles?.full_name || 'sistema'} em {new Date(doc.created_at).toLocaleDateString('pt-BR')}
+                    <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>{r.email}</p>
+                    {r.reason && <p style={{ fontSize: 13, marginTop: 4 }}>Motivo: {r.reason}</p>}
+                    <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 6 }}>
+                      Solicitado em {new Date(r.created_at).toLocaleDateString('pt-BR')}
                     </p>
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => handleDownload(doc.id)} style={styles.iconBtn} title="Download">⬇️</button>
-                    <button onClick={() => handleDeleteDoc(doc.id)} style={{ ...styles.iconBtn, color: 'var(--danger)' }} title="Remover">🗑️</button>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {r.status === 'pending' && (
+                      <>
+                        <button onClick={() => approveRequest(r.id)} style={S.approveBtn} title="Aprovar">✓</button>
+                        <button onClick={() => rejectRequest(r.id)} style={S.rejectBtn} title="Rejeitar">✕</button>
+                      </>
+                    )}
+                    {r.status !== 'pending' && (
+                      <button onClick={() => deleteRequest(r.id)} style={S.deleteBtn} title="Remover">🗑️</button>
+                    )}
                   </div>
                 </div>
               ))}
+              {requests.length === 0 && <p style={S.empty}>Nenhuma solicitação recebida.</p>}
             </div>
           </div>
         )}
 
-        {/* ── DASHBOARD ── */}
-        {tab === 'dashboard' && (
+        {/* ─── EMAILS AUTORIZADOS ─── */}
+        {tab === 'emails' && (
           <div>
-            <h1 style={styles.pageTitle}>Dashboard</h1>
-            <div style={styles.statsGrid}>
-              {[
-                { label: 'Usuários', value: dashData.totalUsers ?? '—', icon: '👥' },
-                { label: 'Documentos', value: dashData.totalDocs ?? '—', icon: '📄' },
-                { label: 'Issues abertos', value: dashData.openIssues ?? '—', icon: '🔧' },
-                { label: 'Sessões de chat', value: dashData.totalSessions ?? '—', icon: '💬' },
-              ].map(s => (
-                <div key={s.label} className="card" style={styles.statCard}>
-                  <span style={{ fontSize: 28 }}>{s.icon}</span>
-                  <p style={{ fontSize: 32, fontWeight: 700 }}>{s.value}</p>
-                  <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>{s.label}</p>
+            <form onSubmit={addAuthorizedEmail} className="card" style={{ marginBottom: 20, display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+              <div style={{ flex: 1 }}>
+                <label style={S.label}>Nome</label>
+                <input value={newEmail.name} onChange={e => setNewEmail(p => ({ ...p, name: e.target.value }))} placeholder="Nome do técnico" style={S.input} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={S.label}>E-mail</label>
+                <input type="email" value={newEmail.email} onChange={e => setNewEmail(p => ({ ...p, email: e.target.value }))} placeholder="tecnico@empresa.com" style={S.input} required />
+              </div>
+              <button type="submit" className="btn btn-primary" disabled={emailLoading}>+ Autorizar</button>
+            </form>
+            <div style={S.cardList}>
+              {authorizedEmails.map(e => (
+                <div key={e.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px' }}>
+                  <div>
+                    <p style={{ fontWeight: 500 }}>{e.name || '—'}</p>
+                    <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>{e.email}</p>
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Adicionado em {new Date(e.created_at).toLocaleDateString('pt-BR')}</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <span className={`badge badge-${e.is_active ? 'green' : 'yellow'}`}>{e.is_active ? 'Ativo' : 'Inativo'}</span>
+                    <button onClick={() => removeAuthorizedEmail(e.id)} style={S.removeBtnSm}>Revogar</button>
+                  </div>
                 </div>
               ))}
+              {authorizedEmails.length === 0 && <p style={S.empty}>Nenhum e-mail autorizado.</p>}
             </div>
           </div>
         )}
 
-        {/* ── USUÁRIOS ── */}
+        {/* ─── USUÁRIOS ─── */}
         {tab === 'users' && (
           <div>
-            <h1 style={styles.pageTitle}>Usuários</h1>
-            <table style={styles.table}>
+            <table style={S.table}>
               <thead><tr>
-                <th style={styles.th}>Nome</th>
-                <th style={styles.th}>Role</th>
-                <th style={styles.th}>Cadastro</th>
-                <th style={styles.th}>Alterar Role</th>
+                <th style={S.th}>Nome</th>
+                <th style={S.th}>Role</th>
+                <th style={S.th}>Cadastro</th>
+                <th style={S.th}>Alterar Role</th>
               </tr></thead>
               <tbody>
                 {users.map(u => (
-                  <tr key={u.id} style={styles.tr}>
-                    <td style={styles.td}>{u.full_name || '—'}</td>
-                    <td style={styles.td}><span className={`badge badge-${u.role === 'admin' ? 'blue' : 'green'}`}>{u.role}</span></td>
-                    <td style={styles.td}>{new Date(u.created_at).toLocaleDateString('pt-BR')}</td>
-                    <td style={styles.td}>
-                      <select value={u.role} onChange={e => updateRole(u.id, e.target.value)} style={styles.filterSelect}>
+                  <tr key={u.id} style={S.tr}>
+                    <td style={S.td}>{u.full_name || '—'}</td>
+                    <td style={S.td}><span className={`badge badge-${u.role === 'admin' ? 'blue' : 'green'}`}>{u.role}</span></td>
+                    <td style={S.td}>{new Date(u.created_at).toLocaleDateString('pt-BR')}</td>
+                    <td style={S.td}>
+                      <select value={u.role} onChange={e => updateRole(u.id, e.target.value)} style={S.filterSel}>
                         <option value="trainee">Trainee</option>
                         <option value="technician">Técnico</option>
                         <option value="manager">Gestor</option>
@@ -402,119 +372,183 @@ export default function Admin() {
           </div>
         )}
 
-        {/* ── PROBLEMAS DE CAMPO ── */}
-        {tab === 'issues' && (
+        {/* ─── DOCUMENTOS ─── */}
+        {tab === 'documents' && (
           <div>
-            <h1 style={styles.pageTitle}>Problemas de Campo</h1>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {issues.map(issue => (
-                <div key={issue.id} className="card">
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontWeight: 600 }}>{issue.title}</p>
-                      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>{issue.description?.slice(0, 120)}...</p>
-                      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                        {issue.technologies?.name && <span className="badge badge-blue">{issue.technologies.name}</span>}
-                        {issue.manufacturers?.name && <span className="badge badge-green">{issue.manufacturers.name}</span>}
-                      </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>{documents.length} documento(s)</p>
+              <button className="btn btn-primary" onClick={() => setShowUpload(true)}>⬆️ Upload</button>
+            </div>
+            {documents.length === 0 && (
+              <div style={S.bigDrop} onClick={() => setShowUpload(true)}>
+                <span style={{ fontSize: 40 }}>⬆️</span>
+                <p style={{ fontWeight: 500, fontSize: 16 }}>Clique para fazer upload de documentos</p>
+                <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>PDF, DOCX ou TXT • Você poderá categorizar antes de enviar</p>
+              </div>
+            )}
+            {documents.length > 0 && (
+              <div style={S.filterRow}>
+                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Filtrar por:</span>
+                <select value={docFilters.specialtyId} onChange={e => setDocFilters(f => ({ ...f, specialtyId: e.target.value, technologyId: '', manufacturerId: '' }))} style={S.filterSel}>
+                  <option value="">Todas Especialidades</option>
+                  {tree.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                <select value={docFilters.technologyId} onChange={e => setDocFilters(f => ({ ...f, technologyId: e.target.value, manufacturerId: '' }))} style={S.filterSel} disabled={!filterTechs.length}>
+                  <option value="">Todas Tecnologias</option>
+                  {filterTechs.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+                <select value={docFilters.manufacturerId} onChange={e => setDocFilters(f => ({ ...f, manufacturerId: e.target.value }))} style={S.filterSel} disabled={!filterMfrs.length}>
+                  <option value="">Todos Fabricantes</option>
+                  {filterMfrs.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+                {(docFilters.specialtyId || docFilters.technologyId || docFilters.manufacturerId) && (
+                  <button onClick={() => setDocFilters({ specialtyId: '', technologyId: '', manufacturerId: '' })} style={S.clearBtn}>✕ Limpar</button>
+                )}
+              </div>
+            )}
+            <div style={S.cardList}>
+              {documents.map(doc => (
+                <div key={doc.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 20px' }}>
+                  <div style={S.docIcon}>📄</div>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontWeight: 600, fontSize: 14 }}>{doc.title}</p>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                      {doc.technologies?.name && <span className="badge badge-blue">{doc.technologies.name}</span>}
+                      {doc.specialties?.name && !doc.technologies?.name && <span className="badge badge-blue">{doc.specialties.name}</span>}
+                      {!doc.technologies?.name && !doc.specialties?.name && <span className="badge badge-blue">Geral</span>}
+                      {doc.manufacturers?.name && <span className="badge badge-green">{doc.manufacturers.name}</span>}
+                      <span className={`badge ${TYPE_COLORS[doc.type] || 'badge-blue'}`}>{DOC_TYPES.find(t => t.value === doc.type)?.label || doc.type}</span>
                     </div>
-                    <span className={`badge badge-${issue.status === 'open' ? 'yellow' : 'green'}`} style={{ flexShrink: 0 }}>{issue.status}</span>
+                    <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>Por {doc.profiles?.full_name || 'sistema'} em {new Date(doc.created_at).toLocaleDateString('pt-BR')}</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => handleDownload(doc.id)} style={S.iconBtn} title="Download">⬇️</button>
+                    <button onClick={() => handleDeleteDoc(doc.id)} style={S.iconBtn} title="Remover">🗑️</button>
                   </div>
                 </div>
               ))}
-              {issues.length === 0 && <p style={{ color: 'var(--text-muted)' }}>Nenhum problema registrado.</p>}
             </div>
           </div>
         )}
 
-        {/* ── WHATSAPP ── */}
-        {tab === 'whatsapp' && (
+        {/* ─── GALERIA ─── */}
+        {tab === 'gallery' && (
           <div>
-            <h1 style={styles.pageTitle}>Acesso WhatsApp</h1>
-            <form onSubmit={addWhatsapp} className="card" style={{ marginBottom: 24, display: 'flex', gap: 12, alignItems: 'flex-end' }}>
-              <div style={{ flex: 1 }}>
-                <label style={styles.label}>Nome</label>
-                <input value={newWA.name} onChange={e => setNewWA(p => ({ ...p, name: e.target.value }))} placeholder="Nome do técnico" style={styles.input} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={styles.label}>Número (com DDI)</label>
-                <input value={newWA.phoneNumber} onChange={e => setNewWA(p => ({ ...p, phoneNumber: e.target.value }))} placeholder="+5511999999999" style={styles.input} />
-              </div>
-              <button type="submit" className="btn btn-primary" disabled={waLoading}>+ Autorizar</button>
-            </form>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {whatsapp.map(u => (
-                <div key={u.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px' }}>
-                  <div>
-                    <p style={{ fontWeight: 500 }}>{u.name}</p>
-                    <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>{u.phone_number}</p>
-                  </div>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <span className={`badge badge-${u.is_active ? 'green' : 'yellow'}`}>{u.is_active ? 'Ativo' : 'Inativo'}</span>
-                    <button onClick={() => api.removeWhatsappUser(u.id).then(() => setWhatsapp(w => w.filter(x => x.id !== u.id)))} style={styles.removeBtn}>Revogar</button>
-                  </div>
+            <div style={{ ...S.bigDrop, cursor: 'default' }}>
+              <span style={{ fontSize: 40 }}>🖼️</span>
+              <p style={{ fontWeight: 500 }}>Galeria de Imagens</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Upload de fotos de equipamentos, instalações e referências visuais</p>
+              <button className="btn btn-primary" style={{ marginTop: 8 }} onClick={() => alert('Em desenvolvimento')}>+ Adicionar imagem</button>
+            </div>
+          </div>
+        )}
+
+        {/* ─── ESTATÍSTICAS ─── */}
+        {tab === 'stats' && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, maxWidth: 600 }}>
+              {[
+                { label: 'Total de Usuários', value: dashData.totalUsers ?? '—', icon: '👥' },
+                { label: 'Documentos na Base', value: dashData.totalDocs ?? '—', icon: '📄' },
+                { label: 'Issues em Aberto', value: dashData.openIssues ?? '—', icon: '🔧' },
+                { label: 'Sessões de Chat', value: dashData.totalSessions ?? '—', icon: '💬' },
+              ].map(s => (
+                <div key={s.label} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <span style={{ fontSize: 28 }}>{s.icon}</span>
+                  <p style={{ fontSize: 36, fontWeight: 700 }}>{s.value}</p>
+                  <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>{s.label}</p>
                 </div>
               ))}
-              {whatsapp.length === 0 && <p style={{ color: 'var(--text-muted)' }}>Nenhum número autorizado.</p>}
+            </div>
+          </div>
+        )}
+
+        {/* ─── CONTRIBUIR ─── */}
+        {tab === 'contribute' && (
+          <div>
+            <p style={{ color: 'var(--text-muted)', marginBottom: 20, fontSize: 14 }}>
+              Problemas de campo registrados pelos técnicos aguardando validação.
+            </p>
+            <div style={S.cardList}>
+              {issues.map(issue => (
+                <div key={issue.id} className="card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontWeight: 600 }}>{issue.title}</p>
+                      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>{issue.description?.slice(0, 150)}...</p>
+                      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                        {issue.technologies?.name && <span className="badge badge-blue">{issue.technologies.name}</span>}
+                        {issue.manufacturers?.name && <span className="badge badge-green">{issue.manufacturers.name}</span>}
+                      </div>
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>{new Date(issue.created_at).toLocaleDateString('pt-BR')}</p>
+                    </div>
+                    <span className={`badge badge-${issue.status === 'validated' ? 'green' : issue.status === 'open' ? 'yellow' : 'blue'}`} style={{ flexShrink: 0 }}>{issue.status}</span>
+                  </div>
+                  {issue.issue_solutions?.filter(s => !s.is_approved).length > 0 && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>{issue.issue_solutions.filter(s => !s.is_approved).length} solução(ões) aguardando aprovação</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {issues.length === 0 && <p style={S.empty}>Nenhuma contribuição registrada.</p>}
             </div>
           </div>
         )}
       </main>
 
-      {/* Modal de upload */}
-      {showUpload && (
-        <UploadModal
-          tree={tree}
-          onClose={() => setShowUpload(false)}
-          onSuccess={(doc) => {
-            setDocuments(d => [doc, ...d])
-            setShowUpload(false)
-          }}
-        />
-      )}
+      {showUpload && <UploadModal tree={tree} onClose={() => setShowUpload(false)} onSuccess={doc => { setDocuments(d => [doc, ...d]); setShowUpload(false) }} />}
     </div>
   )
 }
 
-const styles = {
+const S = {
   layout: { display: 'flex', height: '100vh', overflow: 'hidden' },
-  sidebar: { width: 240, background: 'var(--bg-card)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' },
-  sidebarHeader: { display: 'flex', alignItems: 'center', gap: 10, padding: '20px 16px', borderBottom: '1px solid var(--border)' },
-  nav: { flex: 1, padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: 4 },
-  navItem: { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 8, background: 'none', color: 'var(--text-dim)', fontSize: 13, cursor: 'pointer', border: 'none', transition: 'all 0.15s' },
+  sidebar: { width: 220, background: 'var(--bg-card)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' },
+  sidebarTop: { display: 'flex', alignItems: 'center', gap: 10, padding: '18px 16px', borderBottom: '1px solid var(--border)' },
+  nav: { flex: 1, padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' },
+  navItem: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 12px', borderRadius: 8, background: 'none', color: 'var(--text-dim)', fontSize: 13, cursor: 'pointer', border: 'none', transition: 'all 0.15s', textAlign: 'left' },
   navActive: { background: 'var(--primary-light)', color: 'var(--primary)' },
-  badge: { background: 'var(--bg)', color: 'var(--text-muted)', fontSize: 11, padding: '1px 7px', borderRadius: 10, border: '1px solid var(--border)' },
-  sidebarFooter: { padding: '12px 8px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 4 },
+  pill: { background: 'var(--bg)', color: 'var(--text-muted)', fontSize: 11, padding: '1px 7px', borderRadius: 10, border: '1px solid var(--border)', flexShrink: 0 },
+  pillOrange: { background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.3)' },
+  sidebarBottom: { padding: '10px 8px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 2 },
   footerBtn: { display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 8, background: 'none', color: 'var(--text-muted)', fontSize: 13, cursor: 'pointer', border: 'none' },
-  main: { flex: 1, overflow: 'auto', padding: '32px 40px' },
-  pageTitle: { fontSize: 24, fontWeight: 700, marginBottom: 24 },
-  bigDrop: { border: '2px dashed var(--border)', borderRadius: 'var(--radius)', padding: '48px', textAlign: 'center', cursor: 'pointer', marginBottom: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, transition: 'all 0.2s' },
-  filterRow: { display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' },
-  filterSelect: { background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text)', padding: '8px 12px', borderRadius: 8, fontSize: 13 },
-  clearFilter: { background: 'none', border: '1px solid var(--border)', color: 'var(--text-muted)', padding: '6px 12px', borderRadius: 8, fontSize: 13, cursor: 'pointer' },
-  docRow: { display: 'flex', alignItems: 'center', gap: 16, padding: '14px 20px' },
+  main: { flex: 1, overflow: 'auto', padding: '28px 36px' },
+  topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  pageTitle: { fontSize: 22, fontWeight: 700 },
+  refreshBtn: { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', opacity: 0.6 },
+  alertBanner: { background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)', color: '#fbbf24', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 14 },
+  cardList: { display: 'flex', flexDirection: 'column', gap: 10 },
+  reqCard: { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 },
+  reqLeft: { flex: 1 },
+  approveBtn: { width: 36, height: 36, borderRadius: '50%', background: 'rgba(34,197,94,0.15)', border: '2px solid #4ade80', color: '#4ade80', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 },
+  rejectBtn: { width: 36, height: 36, borderRadius: '50%', background: 'rgba(239,68,68,0.15)', border: '2px solid #f87171', color: '#f87171', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 },
+  deleteBtn: { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', opacity: 0.6 },
+  label: { display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', marginBottom: 6 },
+  input: { width: '100%', padding: '10px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 14 },
+  filterRow: { display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' },
+  filterSel: { background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text)', padding: '8px 12px', borderRadius: 8, fontSize: 13 },
+  clearBtn: { background: 'none', border: '1px solid var(--border)', color: 'var(--text-muted)', padding: '6px 12px', borderRadius: 8, fontSize: 13, cursor: 'pointer' },
+  bigDrop: { border: '2px dashed var(--border)', borderRadius: 'var(--radius)', padding: '48px', textAlign: 'center', cursor: 'pointer', marginBottom: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 },
   docIcon: { width: 40, height: 40, background: 'var(--bg)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 },
   iconBtn: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, padding: 4, opacity: 0.7 },
-  statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 },
-  statCard: { display: 'flex', flexDirection: 'column', gap: 8 },
   table: { width: '100%', borderCollapse: 'collapse' },
   th: { padding: '10px 16px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' },
   tr: { borderBottom: '1px solid var(--border)' },
   td: { padding: '12px 16px', fontSize: 14 },
-  label: { display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', marginBottom: 6 },
-  input: { width: '100%', padding: '10px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 14 },
-  removeBtn: { background: 'none', color: 'var(--danger)', fontSize: 13, cursor: 'pointer', border: '1px solid var(--danger)', padding: '4px 10px', borderRadius: 6 }
+  empty: { color: 'var(--text-muted)', padding: 16, textAlign: 'center' },
+  removeBtnSm: { background: 'none', color: 'var(--danger)', fontSize: 12, cursor: 'pointer', border: '1px solid var(--danger)', padding: '4px 10px', borderRadius: 6 }
 }
 
-const modal = {
+const M = {
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20 },
   box: { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', width: '100%', maxWidth: 600, maxHeight: '90vh', overflow: 'auto' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid var(--border)' },
   close: { background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 20, cursor: 'pointer' },
   body: { padding: 24, display: 'flex', flexDirection: 'column', gap: 16 },
-  dropzone: { border: '2px dashed var(--border)', borderRadius: 'var(--radius-sm)', padding: '32px', textAlign: 'center', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, transition: 'all 0.2s' },
-  dropzoneDrag: { borderColor: 'var(--primary)', background: 'var(--primary-light)' },
-  dropzoneOk: { borderColor: 'var(--success)', background: 'rgba(34,197,94,0.05)' },
+  drop: { border: '2px dashed var(--border)', borderRadius: 'var(--radius-sm)', padding: '32px', textAlign: 'center', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, transition: 'all 0.2s' },
+  dropDrag: { borderColor: 'var(--primary)', background: 'var(--primary-light)' },
+  dropOk: { borderColor: 'var(--success)', background: 'rgba(34,197,94,0.05)' },
   label: { fontSize: 13, fontWeight: 500, color: 'var(--text-dim)', marginBottom: 6, display: 'block' },
   input: { width: '100%', padding: '10px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 14 },
   select: { width: '100%', padding: '10px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 14 }

@@ -46,6 +46,16 @@ export const api = {
   removeWhatsappUser: (id) => request(`/admin/whatsapp-users/${id}`, { method: 'DELETE' }),
   addModel: (body) => request('/knowledge/models', { method: 'POST', body: JSON.stringify(body) }),
 
+  // Access requests
+  getAccessRequests: () => request('/admin/access-requests'),
+  reviewAccessRequest: (id, status) => request(`/admin/access-requests/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  deleteAccessRequest: (id) => request(`/admin/access-requests/${id}`, { method: 'DELETE' }),
+
+  // Authorized emails
+  getAuthorizedEmails: () => request('/admin/authorized-emails'),
+  addAuthorizedEmail: (body) => request('/admin/authorized-emails', { method: 'POST', body: JSON.stringify(body) }),
+  removeAuthorizedEmail: (id) => request(`/admin/authorized-emails/${id}`, { method: 'DELETE' }),
+
   // Documents
   getDocuments: (params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([,v]) => v)).toString()

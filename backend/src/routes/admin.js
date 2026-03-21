@@ -111,4 +111,59 @@ router.delete('/whatsapp-users/:id', requireAdmin, async (req, res) => {
   res.json({ success: true })
 })
 
+// ── ACCESS REQUESTS ──────────────────────────────────────────
+
+// GET /admin/access-requests
+router.get('/access-requests', requireAdmin, async (req, res) => {
+  const { data } = await supabaseAdmin.from('access_requests').select('*').order('created_at', { ascending: false })
+  res.json({ requests: data || [] })
+})
+
+// PATCH /admin/access-requests/:id - Aprovar ou rejeitar
+router.patch('/access-requests/:id', requireAdmin, async (req, res) => {
+  try {
+    const { status } = req.body
+    const { data, error } = await supabaseAdmin
+      .from('access_requests')
+      .update({ status, reviewed_by: req.user.id, reviewed_at: new Date().toISOString() })
+      .eq('id', req.params.id)
+      .select().single()
+    if (error) throw error
+    res.json({ request: data })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// DELETE /admin/access-requests/:id
+router.delete('/access-requests/:id', requireAdmin, async (req, res) => {
+  await supabaseAdmin.from('access_requests').delete().eq('id', req.params.id)
+  res.json({ success: true })
+})
+
+// ── AUTHORIZED EMAILS ─────────────────────────────────────────
+
+// GET /admin/authorized-emails
+router.get('/authorized-emails', requireAdmin, async (req, res) => {
+  const { data } = await supabaseAdmin.from('authorized_emails').select('*').order('created_at', { ascending: false })
+  res.json({ emails: data || [] })
+})
+
+// POST /admin/authorized-emails
+router.post('/authorized-emails', requireAdmin, async (req, res) => {
+  try {
+    const { email, name } = req.body
+    const { data, error } = await supabaseAdmin
+      .from('authorized_emails')
+      .insert({ email, name, added_by: req.user.id })
+      .select().single()
+    if (error) throw error
+    res.status(201).json({ email: data })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// DELETE /admin/authorized-emails/:id
+router.delete('/authorized-emails/:id', requireAdmin, async (req, res) => {
+  await supabaseAdmin.from('authorized_emails').update({ is_active: false }).eq('id', req.params.id)
+  res.json({ success: true })
+})
+
 export default router
