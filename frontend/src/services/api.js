@@ -44,6 +44,24 @@ export const api = {
   getWhatsappUsers: () => request('/admin/whatsapp-users'),
   addWhatsappUser: (body) => request('/admin/whatsapp-users', { method: 'POST', body: JSON.stringify(body) }),
   removeWhatsappUser: (id) => request(`/admin/whatsapp-users/${id}`, { method: 'DELETE' }),
-  uploadDocument: (body) => request('/knowledge/documents', { method: 'POST', body: JSON.stringify(body) }),
   addModel: (body) => request('/knowledge/models', { method: 'POST', body: JSON.stringify(body) }),
+
+  // Documents
+  getDocuments: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([,v]) => v)).toString()
+    return request(`/documents${qs ? '?' + qs : ''}`)
+  },
+  getDocumentUrl: (id) => request(`/documents/${id}/url`),
+  deleteDocument: (id) => request(`/documents/${id}`, { method: 'DELETE' }),
+  uploadDocument: async (formData) => {
+    const { data: { session } } = await (await import('./supabase.js')).supabase.auth.getSession()
+    const BASE = import.meta.env.VITE_API_URL || '/api'
+    const res = await fetch(`${BASE}/documents/upload`, {
+      method: 'POST',
+      headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+      body: formData
+    })
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error) }
+    return res.json()
+  }
 }

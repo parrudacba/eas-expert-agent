@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit'
 import chatRoutes from './routes/chat.js'
 import knowledgeRoutes from './routes/knowledge.js'
 import adminRoutes from './routes/admin.js'
+import documentRoutes from './routes/documents.js'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -43,6 +44,7 @@ app.get('/health', (req, res) => res.json({
 app.use('/chat', chatLimiter, chatRoutes)
 app.use('/knowledge', knowledgeRoutes)
 app.use('/admin', adminRoutes)
+app.use('/documents', documentRoutes)
 
 // 404
 app.use((req, res) => res.status(404).json({ error: 'Rota não encontrada' }))

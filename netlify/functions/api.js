@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit'
 import chatRoutes from '../../backend/src/routes/chat.js'
 import knowledgeRoutes from '../../backend/src/routes/knowledge.js'
 import adminRoutes from '../../backend/src/routes/admin.js'
+import documentRoutes from '../../backend/src/routes/documents.js'
 
 const app = express()
 
@@ -29,6 +30,7 @@ app.get('/api/health', (req, res) => res.json({
 app.use('/api/chat', chatLimiter, chatRoutes)
 app.use('/api/knowledge', knowledgeRoutes)
 app.use('/api/admin', adminRoutes)
+app.use('/api/documents', documentRoutes)
 
 app.use((req, res) => res.status(404).json({ error: 'Rota não encontrada' }))
 
