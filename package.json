@@ -1,0 +1,20 @@
+{
+  "name": "eas-expert-agent",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Dependências compartilhadas para Netlify Functions",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.47.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.4.1",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^3.3.2",
+    "pdf-parse": "^1.1.1",
+    "serverless-http": "^4.0.0",
+    "uuid": "^11.0.3"
+  }
+}

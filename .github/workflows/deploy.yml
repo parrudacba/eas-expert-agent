@@ -20,8 +20,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Instalar dependências do backend
-        working-directory: backend
+      - name: Instalar dependências raiz (para Netlify Functions)
         run: npm install
 
       - name: Instalar dependências do frontend e build
