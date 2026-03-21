@@ -1,19 +1,16 @@
 [build]
-  base    = "frontend"
-  command = "npm install && npm run build"
-  publish = "dist"
-  functions = "../netlify/functions"
+  command = "cd backend && npm install && cd ../frontend && npm install && npm run build"
+  publish = "frontend/dist"
+  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "20"
 
-# Redireciona todas as chamadas /api/* para a função serverless
 [[redirects]]
   from   = "/api/*"
   to     = "/.netlify/functions/api/:splat"
   status = 200
 
-# SPA fallback — todas as rotas vão para o index.html
 [[redirects]]
   from   = "/*"
   to     = "/index.html"
