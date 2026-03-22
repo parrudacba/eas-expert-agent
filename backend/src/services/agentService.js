@@ -1,8 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { ragService } from './ragService.js'
 import { supabaseAdmin } from '../config/supabase.js'
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 // Personalidade e instruções do agente
 const AGENT_PERSONAS = {
@@ -122,22 +119,31 @@ function buildMessages(systemPrompt, history, userMessage) {
 }
 
 async function callClaudeAI(messages) {
-  try {
-    const system = messages.find(m => m.role === 'system')?.content || ''
-    const chatMessages = messages
-      .filter(m => m.role !== 'system')
-      .map(m => ({ role: m.role, content: m.content }))
+  const system = messages.find(m => m.role === 'system')?.content || ''
+  const chatMessages = messages
+    .filter(m => m.role !== 'system')
+    .map(m => ({ role: m.role, content: m.content }))
 
-    const response = await anthropic.messages.create({
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       system,
       messages: chatMessages
     })
+  })
 
-    return response.content[0]?.text || 'Não consegui processar sua mensagem.'
-  } catch (err) {
-    console.error('Erro Claude API:', err.message)
-    throw new Error('Falha na comunicação com o agente de IA')
+  if (!response.ok) {
+    const errBody = await response.text()
+    throw new Error(`Anthropic API ${response.status}: ${errBody}`)
   }
+
+  const data = await response.json()
+  return data.content[0]?.text || 'Não consegui processar sua mensagem.'
 }
