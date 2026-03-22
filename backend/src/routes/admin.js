@@ -34,14 +34,42 @@ router.get('/users', requireAdmin, async (req, res) => {
   res.json({ users: data || [] })
 })
 
+// POST /admin/users - Criar novo usuário
+router.post('/users', requireAdmin, async (req, res) => {
+  try {
+    const { email, password, fullName, role, permissions } = req.body
+    if (!email || !password) return res.status(400).json({ error: 'Email e senha obrigatórios' })
+
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: fullName || '' }
+    })
+    if (authError) throw authError
+
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .upsert({ id: user.id, full_name: fullName || '', role: role || 'technician', permissions: permissions || {} })
+      .select()
+      .single()
+
+    if (profileError) throw profileError
+    res.status(201).json({ user: { ...user, profile } })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // PATCH /admin/users/:id - Atualizar perfil/role de usuário
 router.patch('/users/:id', requireAdmin, async (req, res) => {
   try {
-    const { role, whatsappAuthorized, fullName } = req.body
+    const { role, whatsappAuthorized, fullName, permissions } = req.body
     const updates = {}
     if (role) updates.role = role
     if (whatsappAuthorized !== undefined) updates.whatsapp_authorized = whatsappAuthorized
     if (fullName) updates.full_name = fullName
+    if (permissions !== undefined) updates.permissions = permissions
 
     const { data, error } = await supabaseAdmin
       .from('profiles')

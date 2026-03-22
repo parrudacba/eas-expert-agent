@@ -1,4 +1,4 @@
-import { supabase } from '../config/supabase.js'
+import { supabase, supabaseAdmin } from '../config/supabase.js'
 
 export async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization
@@ -20,7 +20,7 @@ export async function requireAuth(req, res, next) {
 
 export async function requireAdmin(req, res, next) {
   await requireAuth(req, res, async () => {
-    const { data: profile } = await supabase
+    const { data: profile } = await supabaseAdmin
       .from('profiles')
       .select('role')
       .eq('id', req.user.id)

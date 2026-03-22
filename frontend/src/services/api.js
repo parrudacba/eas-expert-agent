@@ -39,6 +39,7 @@ export const api = {
   // Admin
   getDashboard: () => request('/admin/dashboard'),
   getUsers: () => request('/admin/users'),
+  createUser: (body) => request('/admin/users', { method: 'POST', body: JSON.stringify(body) }),
   updateUser: (id, body) => request(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   getFieldIssues: (status) => request(`/admin/field-issues${status ? `?status=${status}` : ''}`),
   getWhatsappUsers: () => request('/admin/whatsapp-users'),

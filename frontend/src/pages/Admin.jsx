@@ -3,6 +3,24 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api.js'
 import { useAuth } from '../contexts/AuthContext.jsx'
 
+const PERMISSIONS = [
+  { key: 'chat_support',     label: 'Chat de Suporte',        desc: 'Atendimento via chat técnico' },
+  { key: 'chat_training',    label: 'Modo Treinamento',       desc: 'Acesso ao chat de treinamento' },
+  { key: 'field_issues',     label: 'Problemas de Campo',     desc: 'Registrar e consultar problemas de campo' },
+  { key: 'knowledge_read',   label: 'Base de Conhecimento',   desc: 'Consultar documentos técnicos' },
+  { key: 'knowledge_upload', label: 'Upload de Documentos',   desc: 'Enviar documentos para a base' },
+  { key: 'admin_panel',      label: 'Painel Administrativo',  desc: 'Acesso ao painel de administração' },
+]
+
+const ROLE_DEFAULTS = {
+  admin:      { chat_support: true,  chat_training: true, field_issues: true, knowledge_read: true, knowledge_upload: true,  admin_panel: true  },
+  manager:    { chat_support: true,  chat_training: true, field_issues: true, knowledge_read: true, knowledge_upload: true,  admin_panel: false },
+  technician: { chat_support: true,  chat_training: true, field_issues: true, knowledge_read: true, knowledge_upload: false, admin_panel: false },
+  trainee:    { chat_support: false, chat_training: true, field_issues: false, knowledge_read: true, knowledge_upload: false, admin_panel: false },
+}
+
+const ROLE_LABELS = { admin: 'Administrador', manager: 'Gestor', technician: 'Técnico', trainee: 'Trainee' }
+
 const DOC_TYPES = [
   { value: 'manual', label: 'Manual' },
   { value: 'technical_doc', label: 'Doc. Técnico' },
@@ -11,6 +29,105 @@ const DOC_TYPES = [
   { value: 'other', label: 'Outro' }
 ]
 const TYPE_COLORS = { manual: 'badge-blue', technical_doc: 'badge-green', procedure: 'badge-yellow', bulletin: 'badge-blue', other: 'badge-green' }
+
+// ─────────────────────────────────────────────────────────────
+// CREATE USER MODAL
+// ─────────────────────────────────────────────────────────────
+function CreateUserModal({ onClose, onSuccess }) {
+  const [form, setForm] = useState({ fullName: '', email: '', password: '', role: 'technician' })
+  const [permissions, setPermissions] = useState({ ...ROLE_DEFAULTS.technician })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [showPass, setShowPass] = useState(false)
+
+  const handleRoleChange = (role) => {
+    setForm(f => ({ ...f, role }))
+    setPermissions({ ...ROLE_DEFAULTS[role] })
+  }
+
+  const togglePerm = (key) => setPermissions(p => ({ ...p, [key]: !p[key] }))
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!form.email || !form.password) { setError('Email e senha são obrigatórios'); return }
+    if (form.password.length < 6) { setError('Senha deve ter mínimo 6 caracteres'); return }
+    setLoading(true); setError('')
+    try {
+      const result = await api.createUser({ ...form, permissions })
+      onSuccess(result)
+    } catch (err) { setError(err.message) }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <div style={M.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ ...M.box, maxWidth: 520 }}>
+        <div style={M.header}>
+          <h2 style={{ fontSize: 18, fontWeight: 700 }}>Novo Usuário</h2>
+          <button onClick={onClose} style={M.close}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} style={{ ...M.body, gap: 16 }}>
+          {/* Dados básicos */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={M.label}>Nome completo</label>
+              <input value={form.fullName} onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))} placeholder="Nome do usuário" style={M.input} />
+            </div>
+            <div>
+              <label style={M.label}>Email *</label>
+              <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="email@empresa.com" style={M.input} required />
+            </div>
+            <div>
+              <label style={M.label}>Senha *</label>
+              <div style={{ position: 'relative' }}>
+                <input type={showPass ? 'text' : 'password'} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="Mínimo 6 caracteres" style={{ ...M.input, paddingRight: 36 }} required />
+                <button type="button" onClick={() => setShowPass(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 16 }}>{showPass ? '🙈' : '👁️'}</button>
+              </div>
+            </div>
+          </div>
+
+          {/* Role */}
+          <div>
+            <label style={M.label}>Perfil de acesso</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {Object.entries(ROLE_LABELS).map(([key, label]) => (
+                <button key={key} type="button" onClick={() => handleRoleChange(key)}
+                  style={{ flex: 1, padding: '8px 4px', borderRadius: 8, border: `1px solid ${form.role === key ? 'var(--primary)' : 'var(--border)'}`, background: form.role === key ? 'var(--primary-light)' : 'transparent', color: form.role === key ? 'var(--primary)' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Permissões */}
+          <div>
+            <label style={{ ...M.label, marginBottom: 10 }}>Permissões</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {PERMISSIONS.map(p => (
+                <label key={p.key} onClick={() => togglePerm(p.key)}
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', borderRadius: 8, border: `1px solid ${permissions[p.key] ? 'var(--primary)' : 'var(--border)'}`, background: permissions[p.key] ? 'var(--primary-light)' : 'transparent', cursor: 'pointer', transition: 'all 0.15s' }}>
+                  <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${permissions[p.key] ? 'var(--primary)' : 'var(--text-muted)'}`, background: permissions[p.key] ? 'var(--primary)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
+                    {permissions[p.key] && <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>✓</span>}
+                  </div>
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: permissions[p.key] ? 'var(--primary)' : 'var(--text)' }}>{p.label}</p>
+                    <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{p.desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {error && <p style={{ color: 'var(--danger)', fontSize: 13 }}>{error}</p>}
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={onClose} className="btn btn-ghost">Cancelar</button>
+            <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? 'Criando...' : '+ Criar Usuário'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
 
 // ─────────────────────────────────────────────────────────────
 // UPLOAD MODAL
@@ -151,6 +268,7 @@ export default function Admin() {
   const [dashData, setDashData] = useState({})
   const [docFilters, setDocFilters] = useState({ specialtyId: '', technologyId: '', manufacturerId: '' })
   const [showUpload, setShowUpload] = useState(false)
+  const [showCreateUser, setShowCreateUser] = useState(false)
   const [newEmail, setNewEmail] = useState({ email: '', name: '' })
   const [emailLoading, setEmailLoading] = useState(false)
 
@@ -344,31 +462,43 @@ export default function Admin() {
         {/* ─── USUÁRIOS ─── */}
         {tab === 'users' && (
           <div>
-            <table style={S.table}>
-              <thead><tr>
-                <th style={S.th}>Nome</th>
-                <th style={S.th}>Role</th>
-                <th style={S.th}>Cadastro</th>
-                <th style={S.th}>Alterar Role</th>
-              </tr></thead>
-              <tbody>
-                {users.map(u => (
-                  <tr key={u.id} style={S.tr}>
-                    <td style={S.td}>{u.full_name || '—'}</td>
-                    <td style={S.td}><span className={`badge badge-${u.role === 'admin' ? 'blue' : 'green'}`}>{u.role}</span></td>
-                    <td style={S.td}>{new Date(u.created_at).toLocaleDateString('pt-BR')}</td>
-                    <td style={S.td}>
-                      <select value={u.role} onChange={e => updateRole(u.id, e.target.value)} style={S.filterSel}>
-                        <option value="trainee">Trainee</option>
-                        <option value="technician">Técnico</option>
-                        <option value="manager">Gestor</option>
-                        <option value="admin">Admin</option>
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>{users.length} usuário(s) cadastrado(s)</p>
+              <button className="btn btn-primary" onClick={() => setShowCreateUser(true)}>+ Novo Usuário</button>
+            </div>
+            <div style={S.cardList}>
+              {users.map(u => (
+                <div key={u.id} className="card" style={{ padding: '16px 20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                        <p style={{ fontWeight: 600, fontSize: 15 }}>{u.full_name || '—'}</p>
+                        <span className={`badge badge-${u.role === 'admin' ? 'blue' : u.role === 'manager' ? 'yellow' : 'green'}`}>
+                          {ROLE_LABELS[u.role] || u.role}
+                        </span>
+                      </div>
+                      {u.permissions && Object.keys(u.permissions).length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                          {PERMISSIONS.filter(p => u.permissions[p.key]).map(p => (
+                            <span key={p.key} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: 'var(--primary-light)', color: 'var(--primary)', border: '1px solid rgba(59,130,246,0.2)' }}>{p.label}</span>
+                          ))}
+                        </div>
+                      )}
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+                        Cadastrado em {new Date(u.created_at).toLocaleDateString('pt-BR')}
+                      </p>
+                    </div>
+                    <select value={u.role} onChange={e => updateRole(u.id, e.target.value)} style={S.filterSel}>
+                      <option value="trainee">Trainee</option>
+                      <option value="technician">Técnico</option>
+                      <option value="manager">Gestor</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                </div>
+              ))}
+              {users.length === 0 && <p style={S.empty}>Nenhum usuário cadastrado.</p>}
+            </div>
           </div>
         )}
 
@@ -498,6 +628,7 @@ export default function Admin() {
       </main>
 
       {showUpload && <UploadModal tree={tree} onClose={() => setShowUpload(false)} onSuccess={doc => { setDocuments(d => [doc, ...d]); setShowUpload(false) }} />}
+      {showCreateUser && <CreateUserModal onClose={() => setShowCreateUser(false)} onSuccess={result => { setUsers(u => [result.user?.profile || result, ...u]); setShowCreateUser(false) }} />}
     </div>
   )
 }
