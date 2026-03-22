@@ -1,6 +1,8 @@
-import { abacusFetch } from '../config/abacus.js'
+import Anthropic from '@anthropic-ai/sdk'
 import { ragService } from './ragService.js'
 import { supabaseAdmin } from '../config/supabase.js'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 // Personalidade e instruções do agente
 const AGENT_PERSONAS = {
@@ -57,8 +59,8 @@ export const agentService = {
     const systemPrompt = buildSystemPrompt(mode, context, ragContext)
     const messages = buildMessages(systemPrompt, history, userMessage)
 
-    // 4. Chamar Abacus.ai
-    const response = await callAbacusAI(messages)
+    // 4. Chamar Claude API
+    const response = await callClaudeAI(messages)
 
     // 5. Salvar mensagem do usuário e resposta
     await supabaseAdmin.from('chat_messages').insert([
@@ -119,15 +121,23 @@ function buildMessages(systemPrompt, history, userMessage) {
   ]
 }
 
-async function callAbacusAI(messages) {
+async function callClaudeAI(messages) {
   try {
-    const data = await abacusFetch('/v0/chat', {
-      method: 'POST',
-      body: JSON.stringify({ messages, llmName: 'CLAUDE_V3_5_SONNET' })
+    const system = messages.find(m => m.role === 'system')?.content || ''
+    const chatMessages = messages
+      .filter(m => m.role !== 'system')
+      .map(m => ({ role: m.role, content: m.content }))
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      system,
+      messages: chatMessages
     })
-    return data.response || data.message || 'Não consegui processar sua mensagem.'
+
+    return response.content[0]?.text || 'Não consegui processar sua mensagem.'
   } catch (err) {
-    console.error('Erro Abacus.ai:', err.message)
+    console.error('Erro Claude API:', err.message)
     throw new Error('Falha na comunicação com o agente de IA')
   }
 }
