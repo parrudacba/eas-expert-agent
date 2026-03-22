@@ -5,7 +5,8 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import {
   Loader2, LogIn, UserPlus, Send, CheckCircle,
-  Clock, Cpu, Shield, Zap, Mail
+  Clock, Cpu, Shield, Zap, Mail, Lock, KeyRound,
+  MessageCircle, ArrowLeft, Eye, EyeOff
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -100,13 +101,19 @@ function ParticlesBackground() {
 
 // ─── Componente principal ──────────────────────────────────────
 export default function Login() {
-  const { signInWithEmail, verifyOtp } = useAuth();
+  const { signInWithPassword, sendOtp, verifyOtp, updatePassword } = useAuth();
   const navigate = useNavigate();
 
-  // mode: "login" | "signup" | "request-access" | "otp"
+  // mode: "login" | "signup" | "request-access" | "forgot-password" | "reset-password"
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [otp, setOtp] = useState("");
+  const [otpChannel, setOtpChannel] = useState("email"); // "email" | "whatsapp"
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [cpf, setCpf] = useState("");
@@ -142,30 +149,55 @@ export default function Login() {
     }
   };
 
-  // ── Entrar (email → OTP) ──────────────────────────────────────
-  const handleSendOtp = async (e) => {
+  // ── Entrar (email + senha) ────────────────────────────────────
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      await signInWithEmail(email);
-      setMode("otp");
+      await signInWithPassword(email, password);
+      navigate("/");
     } catch (err) {
-      setError(err.message || "Erro ao enviar código.");
+      setError(err.message || "Email ou senha incorretos.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleVerifyOtp = async (e) => {
+  // ── Enviar código (recuperação de senha) ──────────────────────
+  const handleSendOtp = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
+      await sendOtp(email);
+      setMode("reset-password");
+    } catch (err) {
+      setError(err.message || "Erro ao enviar código. Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Redefinir senha (OTP + nova senha) ────────────────────────
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (newPassword !== confirmPassword) {
+      setError("As senhas não coincidem.");
+      return;
+    }
+    if (newPassword.length < 6) {
+      setError("A senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+    setLoading(true);
+    try {
       await verifyOtp(email, otp);
+      await updatePassword(newPassword);
       navigate("/");
-    } catch {
-      setError("Código inválido ou expirado. Tente novamente.");
+    } catch (err) {
+      setError(err.message || "Código inválido ou expirado. Tente novamente.");
     } finally {
       setLoading(false);
     }
@@ -201,6 +233,17 @@ export default function Login() {
     }
   };
 
+  const switchMode = (next) => {
+    setMode(next);
+    setError("");
+    setOtp("");
+    setNewPassword("");
+    setConfirmPassword("");
+  };
+
+  const inputClass = "w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all text-white placeholder-slate-500";
+  const inputErrClass = "w-full px-4 py-3 bg-slate-900/50 border border-red-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/50 transition-all text-white placeholder-slate-500";
+
   if (!mounted) {
     return (
       <div className="min-h-screen bg-[#030712] flex items-center justify-center">
@@ -209,7 +252,7 @@ export default function Login() {
     );
   }
 
-  // ── Tela de sucesso ───────────────────────────────────────────
+  // ── Tela de sucesso (acesso solicitado) ───────────────────────
   if (accessRequestSent) {
     return (
       <div className="min-h-screen bg-[#030712] flex items-center justify-center p-4 relative overflow-hidden">
@@ -247,7 +290,7 @@ export default function Login() {
                 setAccessRequestSent(false);
                 setMode("login");
                 setEmail(""); setName(""); setPhone(""); setCpf("");
-                setCompany(""); setPosition(""); setReason("");
+                setCompany(""); setPosition(""); setReason(""); setPassword("");
               }}
               className="text-cyan-400 hover:text-cyan-300 font-medium transition-colors"
             >
@@ -315,7 +358,6 @@ export default function Login() {
               />
             </motion.div>
 
-            {/* Expert Paulo gradient title */}
             <div className="relative">
               <h1 className="text-3xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent">
                 EAS Expert
@@ -350,7 +392,7 @@ export default function Login() {
                     <h3 className="font-semibold text-amber-400">Solicitar Acesso</h3>
                   </div>
                   <p className="text-sm text-amber-200/70">
-                    Seu email ainda não está autorizado. Preencha o formulário abaixo para solicitar acesso.
+                    Preencha o formulário abaixo para solicitar acesso ao sistema.
                   </p>
                 </div>
 
@@ -359,33 +401,25 @@ export default function Login() {
                     <label className="block text-sm font-medium text-slate-300 mb-1">
                       Nome completo <span className="text-cyan-400">*</span>
                     </label>
-                    <input
-                      type="text" value={name} onChange={e => setName(e.target.value)}
-                      placeholder="Seu nome" required
-                      className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all text-white placeholder-slate-500"
-                    />
+                    <input type="text" value={name} onChange={e => setName(e.target.value)}
+                      placeholder="Seu nome" required className={inputClass} />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">
                       Email <span className="text-cyan-400">*</span>
                     </label>
-                    <input
-                      type="email" value={email} onChange={e => setEmail(e.target.value)}
-                      placeholder="seu@email.com" required
-                      className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all text-white placeholder-slate-500"
-                    />
+                    <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                      placeholder="seu@email.com" required className={inputClass} />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">
                       Telefone <span className="text-cyan-400">*</span>
                     </label>
-                    <input
-                      type="tel" value={phone} onChange={e => handlePhoneChange(e.target.value)}
+                    <input type="tel" value={phone} onChange={e => handlePhoneChange(e.target.value)}
                       placeholder="(99) 99999-9999" required
-                      className={`w-full px-4 py-3 bg-slate-900/50 border rounded-xl focus:outline-none focus:ring-2 transition-all text-white placeholder-slate-500 ${phoneError ? 'border-red-500 focus:ring-red-500/50' : 'border-slate-700 focus:ring-cyan-500/50 focus:border-cyan-500'}`}
-                    />
+                      className={phoneError ? inputErrClass : inputClass} />
                     {phoneError && <p className="text-red-400 text-xs mt-1">{phoneError}</p>}
                   </div>
 
@@ -393,30 +427,22 @@ export default function Login() {
                     <label className="block text-sm font-medium text-slate-300 mb-1">
                       CPF <span className="text-cyan-400">*</span>
                     </label>
-                    <input
-                      type="text" value={cpf} onChange={e => handleCpfChange(e.target.value)}
+                    <input type="text" value={cpf} onChange={e => handleCpfChange(e.target.value)}
                       placeholder="000.000.000-00" required
-                      className={`w-full px-4 py-3 bg-slate-900/50 border rounded-xl focus:outline-none focus:ring-2 transition-all text-white placeholder-slate-500 ${cpfError ? 'border-red-500 focus:ring-red-500/50' : 'border-slate-700 focus:ring-cyan-500/50 focus:border-cyan-500'}`}
-                    />
+                      className={cpfError ? inputErrClass : inputClass} />
                     {cpfError && <p className="text-red-400 text-xs mt-1">{cpfError}</p>}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-1">Empresa</label>
-                      <input
-                        type="text" value={company} onChange={e => setCompany(e.target.value)}
-                        placeholder="Sua empresa"
-                        className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all text-white placeholder-slate-500"
-                      />
+                      <input type="text" value={company} onChange={e => setCompany(e.target.value)}
+                        placeholder="Sua empresa" className={inputClass} />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-1">Cargo</label>
-                      <input
-                        type="text" value={position} onChange={e => setPosition(e.target.value)}
-                        placeholder="Seu cargo"
-                        className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all text-white placeholder-slate-500"
-                      />
+                      <input type="text" value={position} onChange={e => setPosition(e.target.value)}
+                        placeholder="Seu cargo" className={inputClass} />
                     </div>
                   </div>
 
@@ -424,8 +450,7 @@ export default function Login() {
                     <label className="block text-sm font-medium text-slate-300 mb-1">
                       Por que você precisa de acesso?
                     </label>
-                    <textarea
-                      value={reason} onChange={e => setReason(e.target.value)}
+                    <textarea value={reason} onChange={e => setReason(e.target.value)}
                       placeholder="Descreva brevemente o motivo da sua solicitação..."
                       rows={3}
                       className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all resize-none text-white placeholder-slate-500"
@@ -443,30 +468,101 @@ export default function Login() {
                     disabled={loading || !!cpfError || !!phoneError}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 disabled:from-slate-600 disabled:to-slate-600 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(245,158,11,0.3)] hover:shadow-[0_0_30px_rgba(245,158,11,0.4)]"
+                    className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 disabled:from-slate-600 disabled:to-slate-600 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(245,158,11,0.3)]"
                   >
-                    {loading ? (
-                      <><Loader2 className="w-5 h-5 animate-spin" /> Enviando...</>
-                    ) : (
-                      <><Send className="w-5 h-5" /> Enviar Solicitação</>
-                    )}
+                    {loading
+                      ? <><Loader2 className="w-5 h-5 animate-spin" /> Enviando...</>
+                      : <><Send className="w-5 h-5" /> Enviar Solicitação</>
+                    }
                   </motion.button>
 
-                  <button
-                    type="button"
-                    onClick={() => { setMode("login"); setError(""); setCpfError(""); setPhoneError(""); }}
-                    className="w-full text-slate-400 hover:text-slate-300 font-medium py-2 transition-colors"
-                  >
-                    Voltar para o login
+                  <button type="button" onClick={() => switchMode("login")}
+                    className="w-full text-slate-400 hover:text-slate-300 font-medium py-2 transition-colors flex items-center justify-center gap-1">
+                    <ArrowLeft className="w-4 h-4" /> Voltar para o login
                   </button>
                 </form>
               </motion.div>
             )}
 
-            {/* ── OTP (código enviado) ── */}
-            {mode === "otp" && (
+            {/* ── Recuperar Senha ── */}
+            {mode === "forgot-password" && (
               <motion.div
-                key="otp"
+                key="forgot-password"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+              >
+                <div className="mb-6">
+                  <h2 className="text-xl font-bold text-white mb-1">Recuperar Senha</h2>
+                  <p className="text-slate-400 text-sm">Informe seu email para receber o código de verificação.</p>
+                </div>
+
+                <form onSubmit={handleSendOtp} className="space-y-5">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Email cadastrado</label>
+                    <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                      placeholder="seu@email.com" required autoFocus className={inputClass} />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Receber código via</label>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setOtpChannel("email")}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border font-medium text-sm transition-all ${
+                          otpChannel === "email"
+                            ? "bg-cyan-600/20 border-cyan-500 text-cyan-400 shadow-[0_0_12px_rgba(0,212,255,0.15)]"
+                            : "border-slate-700 text-slate-400 hover:border-slate-500"
+                        }`}
+                      >
+                        <Mail className="w-4 h-4" /> Email
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOtpChannel("whatsapp")}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border font-medium text-sm transition-all ${
+                          otpChannel === "whatsapp"
+                            ? "bg-green-600/20 border-green-500 text-green-400 shadow-[0_0_12px_rgba(34,197,94,0.15)]"
+                            : "border-slate-700 text-slate-400 hover:border-slate-500"
+                        }`}
+                      >
+                        <MessageCircle className="w-4 h-4" /> WhatsApp
+                      </button>
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="bg-red-950/50 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl text-sm">
+                      {error}
+                    </div>
+                  )}
+
+                  <motion.button
+                    type="submit"
+                    disabled={loading}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="w-full bg-gradient-to-r from-slate-600 to-blue-700 hover:from-slate-500 hover:to-blue-600 disabled:from-slate-700 disabled:to-slate-700 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-all"
+                  >
+                    {loading
+                      ? <><Loader2 className="w-5 h-5 animate-spin" /> Enviando...</>
+                      : <><Send className="w-5 h-5" /> Enviar Código</>
+                    }
+                  </motion.button>
+
+                  <button type="button" onClick={() => switchMode("login")}
+                    className="w-full text-slate-400 hover:text-slate-300 font-medium py-2 transition-colors flex items-center justify-center gap-1">
+                    <ArrowLeft className="w-4 h-4" /> Voltar para o login
+                  </button>
+                </form>
+              </motion.div>
+            )}
+
+            {/* ── Redefinir Senha (OTP + nova senha) ── */}
+            {mode === "reset-password" && (
+              <motion.div
+                key="reset-password"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
@@ -477,24 +573,46 @@ export default function Login() {
                     <h3 className="font-semibold text-cyan-400">Código Enviado!</h3>
                   </div>
                   <p className="text-sm text-cyan-200/70">
-                    Verifique seu email <strong className="text-white">{email}</strong>
+                    Verifique seu email <strong className="text-white">{email}</strong> e insira o código abaixo.
                   </p>
                 </div>
 
-                <form onSubmit={handleVerifyOtp} className="space-y-4">
+                <form onSubmit={handleResetPassword} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1">
-                      Código de verificação
-                    </label>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Código de verificação</label>
                     <input
                       type="text"
                       value={otp}
                       onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                       placeholder="000000"
-                      required
-                      maxLength={6}
-                      autoFocus
+                      required maxLength={6} autoFocus
                       className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all text-white placeholder-slate-500 text-center text-2xl tracking-[0.5em] font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Nova senha</label>
+                    <div className="relative">
+                      <input
+                        type={showNewPassword ? "text" : "password"}
+                        value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                        placeholder="Mínimo 6 caracteres" required
+                        className={`${inputClass} pr-11`}
+                      />
+                      <button type="button" onClick={() => setShowNewPassword(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors">
+                        {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Confirmar nova senha</label>
+                    <input
+                      type="password"
+                      value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                      placeholder="Repita a senha" required
+                      className={inputClass}
                     />
                   </div>
 
@@ -511,19 +629,15 @@ export default function Login() {
                     whileTap={{ scale: 0.98 }}
                     className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:from-slate-600 disabled:to-slate-600 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(0,212,255,0.3)]"
                   >
-                    {loading ? (
-                      <><Loader2 className="w-5 h-5 animate-spin" /> Verificando...</>
-                    ) : (
-                      <><CheckCircle className="w-5 h-5" /> Entrar</>
-                    )}
+                    {loading
+                      ? <><Loader2 className="w-5 h-5 animate-spin" /> Verificando...</>
+                      : <><KeyRound className="w-5 h-5" /> Redefinir Senha</>
+                    }
                   </motion.button>
 
-                  <button
-                    type="button"
-                    onClick={() => { setMode("login"); setOtp(""); setError(""); }}
-                    className="w-full text-slate-400 hover:text-slate-300 font-medium py-2 transition-colors"
-                  >
-                    ← Voltar
+                  <button type="button" onClick={() => switchMode("forgot-password")}
+                    className="w-full text-slate-400 hover:text-slate-300 font-medium py-2 transition-colors flex items-center justify-center gap-1">
+                    <ArrowLeft className="w-4 h-4" /> Voltar
                   </button>
                 </form>
               </motion.div>
@@ -540,7 +654,7 @@ export default function Login() {
                 {/* Tabs */}
                 <div className="flex bg-slate-900/50 rounded-xl p-1 mb-6 border border-slate-800">
                   <button
-                    onClick={() => { setMode("login"); setError(""); }}
+                    onClick={() => switchMode("login")}
                     className={`flex-1 py-2 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
                       mode === "login"
                         ? "bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_15px_rgba(0,212,255,0.3)]"
@@ -550,7 +664,7 @@ export default function Login() {
                     <LogIn className="w-4 h-4" /> Entrar
                   </button>
                   <button
-                    onClick={() => { setMode("signup"); setError(""); }}
+                    onClick={() => switchMode("signup")}
                     className={`flex-1 py-2 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
                       mode === "signup"
                         ? "bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-[0_0_15px_rgba(0,212,255,0.3)]"
@@ -562,64 +676,87 @@ export default function Login() {
                 </div>
 
                 {/* Form */}
-                <form onSubmit={mode === "login" ? handleSendOtp : e => { e.preventDefault(); setMode("request-access"); }} className="space-y-4">
-                  {mode === "signup" && (
+                {mode === "login" ? (
+                  <form onSubmit={handleLogin} className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-1">Nome</label>
-                      <input
-                        type="text" value={name} onChange={e => setName(e.target.value)}
-                        placeholder="Seu nome"
-                        className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all text-white placeholder-slate-500"
-                      />
+                      <label className="block text-sm font-medium text-slate-300 mb-1">Email</label>
+                      <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                        placeholder="seu@email.com" required className={inputClass} />
                     </div>
-                  )}
 
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1">Email</label>
-                    <input
-                      type="email" value={email} onChange={e => setEmail(e.target.value)}
-                      placeholder="seu@email.com" required
-                      className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all text-white placeholder-slate-500"
-                    />
-                  </div>
-
-                  {error && (
-                    <div className="bg-red-950/50 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl text-sm">
-                      {error}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-1">Senha</label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          value={password} onChange={e => setPassword(e.target.value)}
+                          placeholder="••••••••" required
+                          className={`${inputClass} pr-11`}
+                        />
+                        <button type="button" onClick={() => setShowPassword(v => !v)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors">
+                          {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                      </div>
                     </div>
-                  )}
 
-                  <motion.button
-                    type="submit"
-                    disabled={loading}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:from-slate-600 disabled:to-slate-600 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(0,212,255,0.3)] hover:shadow-[0_0_30px_rgba(0,212,255,0.4)]"
-                  >
-                    {loading ? (
-                      <><Loader2 className="w-5 h-5 animate-spin" /> Enviando...</>
-                    ) : mode === "login" ? (
-                      <><LogIn className="w-5 h-5" /> Entrar</>
-                    ) : (
-                      <><UserPlus className="w-5 h-5" /> Solicitar Acesso</>
+                    {error && (
+                      <div className="bg-red-950/50 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl text-sm">
+                        {error}
+                      </div>
                     )}
-                  </motion.button>
 
-                  {mode === "signup" && (
-                    <div className="mt-4 text-center">
-                      <p className="text-sm text-slate-500 mb-2">
-                        Apenas emails autorizados pelo administrador podem criar conta.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setMode("request-access")}
-                        className="text-cyan-400 hover:text-cyan-300 font-medium text-sm transition-colors"
-                      >
-                        Não tem autorização? Solicitar acesso →
+                    <motion.button
+                      type="submit"
+                      disabled={loading}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:from-slate-600 disabled:to-slate-600 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(0,212,255,0.3)] hover:shadow-[0_0_30px_rgba(0,212,255,0.4)]"
+                    >
+                      {loading
+                        ? <><Loader2 className="w-5 h-5 animate-spin" /> Entrando...</>
+                        : <><Lock className="w-5 h-5" /> Entrar</>
+                      }
+                    </motion.button>
+
+                    <div className="text-center">
+                      <button type="button" onClick={() => switchMode("forgot-password")}
+                        className="text-cyan-400 hover:text-cyan-300 text-sm font-medium transition-colors">
+                        Esqueceu o acesso?
                       </button>
                     </div>
-                  )}
-                </form>
+                  </form>
+                ) : (
+                  /* Signup → redirect to request-access */
+                  <div className="space-y-4">
+                    <div className="bg-cyan-950/50 border border-cyan-500/30 rounded-xl p-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Shield className="w-5 h-5 text-cyan-400" />
+                        <h3 className="font-semibold text-cyan-400">Acesso por convite</h3>
+                      </div>
+                      <p className="text-sm text-cyan-200/70">
+                        Apenas usuários autorizados pelo administrador podem criar conta.
+                      </p>
+                    </div>
+
+                    <motion.button
+                      type="button"
+                      onClick={() => switchMode("request-access")}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(245,158,11,0.3)]"
+                    >
+                      <Send className="w-5 h-5" /> Solicitar Acesso
+                    </motion.button>
+
+                    <p className="text-center text-sm text-slate-500">
+                      Já tem autorização?{" "}
+                      <button onClick={() => switchMode("login")} className="text-cyan-400 hover:text-cyan-300 font-medium">
+                        Entrar →
+                      </button>
+                    </p>
+                  </div>
+                )}
               </motion.div>
             )}
 
@@ -629,7 +766,7 @@ export default function Login() {
         {/* Rodapé */}
         <div className="mt-6 text-center">
           <p className="text-slate-500 text-sm">
-            © {new Date().getFullYear()} Sensorseg® - Todos os direitos reservados
+            © {new Date().getFullYear()} EAS Expert® – Sensorseg – Todos os direitos reservados
           </p>
         </div>
       </motion.div>
