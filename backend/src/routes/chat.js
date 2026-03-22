@@ -58,7 +58,7 @@ router.post('/message', requireAuth, async (req, res) => {
     res.json(result)
   } catch (err) {
     console.error('Chat error:', err)
-    res.status(500).json({ error: 'Erro ao processar mensagem' })
+    res.status(500).json({ error: err.message || 'Erro ao processar mensagem' })
   }
 })
 
