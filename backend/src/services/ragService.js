@@ -1,93 +1,58 @@
 import { supabaseAdmin } from '../config/supabase.js'
-import { abacusFetch } from '../config/abacus.js'
 
 export const ragService = {
-  // Busca semântica na base de conhecimento
+  // Busca por palavras-chave na base de conhecimento (sem embedding externo)
   async search(query, filters = {}) {
     if (!query) return []
 
     try {
-      // Gerar embedding da query via Abacus.ai
-      const embedding = await generateEmbedding(query)
+      // Extrair palavras-chave com 3+ caracteres
+      const keywords = query
+        .toLowerCase()
+        .replace(/[^\w\sáéíóúãõâêîôûàèìòùç]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length >= 3)
 
-      // Buscar documentos relevantes
-      const { data: docs } = await supabaseAdmin.rpc('search_documents', {
-        query_embedding: embedding,
-        match_threshold: 0.65,
-        match_count: 5,
-        filter_specialty_id: filters.specialtyId || null,
-        filter_technology_id: filters.technologyId || null,
-        filter_manufacturer_id: filters.manufacturerId || null,
-        filter_model_id: filters.modelId || null
-      })
+      if (keywords.length === 0) return []
 
-      // Buscar issues de campo similares
-      const { data: issues } = await supabaseAdmin.rpc('search_field_issues', {
-        query_embedding: embedding,
-        match_threshold: 0.65,
-        match_count: 3,
-        filter_technology_id: filters.technologyId || null
-      })
+      // Montar query no Supabase
+      let dbQuery = supabaseAdmin
+        .from('documents')
+        .select('id, title, content, document_type')
+        .eq('status', 'active')
 
-      return [...(docs || []), ...(issues || [])]
+      // Aplicar filtros de contexto
+      if (filters.specialtyId)    dbQuery = dbQuery.eq('specialty_id', filters.specialtyId)
+      if (filters.technologyId)   dbQuery = dbQuery.eq('technology_id', filters.technologyId)
+      if (filters.manufacturerId) dbQuery = dbQuery.eq('manufacturer_id', filters.manufacturerId)
+      if (filters.modelId)        dbQuery = dbQuery.eq('equipment_model_id', filters.modelId)
+
+      // Busca por palavras-chave em título e conteúdo
+      const orConditions = keywords
+        .flatMap(k => [`title.ilike.%${k}%`, `content.ilike.%${k}%`])
+        .join(',')
+
+      dbQuery = dbQuery.or(orConditions).limit(5)
+
+      const { data: docs, error } = await dbQuery
+
+      if (error) {
+        console.error('RAG DB error:', error.message)
+        return []
+      }
+
+      return (docs || []).map(doc => ({
+        title: doc.title,
+        content: doc.content,
+        type: doc.document_type
+      }))
     } catch (err) {
       console.error('RAG search error:', err.message)
       return []
     }
   },
 
-  // Indexar documento com embedding
-  async indexDocument(documentId) {
-    const { data: doc } = await supabaseAdmin
-      .from('documents')
-      .select('id, title, content')
-      .eq('id', documentId)
-      .single()
-
-    if (!doc?.content) return false
-
-    const textToEmbed = `${doc.title}\n\n${doc.content}`
-    const embedding = await generateEmbedding(textToEmbed)
-
-    await supabaseAdmin
-      .from('documents')
-      .update({ embedding })
-      .eq('id', documentId)
-
-    return true
-  },
-
-  // Indexar field issue com embedding
-  async indexFieldIssue(issueId) {
-    const { data: issue } = await supabaseAdmin
-      .from('field_issues')
-      .select('id, title, description, symptoms')
-      .eq('id', issueId)
-      .single()
-
-    if (!issue) return false
-
-    const textToEmbed = [
-      issue.title,
-      issue.description,
-      ...(issue.symptoms || [])
-    ].join('\n')
-
-    const embedding = await generateEmbedding(textToEmbed)
-
-    await supabaseAdmin
-      .from('field_issues')
-      .update({ embedding })
-      .eq('id', issueId)
-
-    return true
-  }
-}
-
-async function generateEmbedding(text) {
-  const data = await abacusFetch('/v0/embeddings', {
-    method: 'POST',
-    body: JSON.stringify({ text, modelName: 'text-embedding-3-small' })
-  })
-  return data.embedding
+  // Mantido para compatibilidade — sem embedding externo
+  async indexDocument() { return true },
+  async indexFieldIssue() { return true }
 }

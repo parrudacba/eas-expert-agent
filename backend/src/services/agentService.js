@@ -1,111 +1,43 @@
 import { ragService } from './ragService.js'
 import { supabaseAdmin } from '../config/supabase.js'
 
-// Personalidade e instruções do agente
-const AGENT_PERSONAS = {
-  support: `Você é um especialista técnico sênior em sistemas EAS (Electronic Article Surveillance), CFTV e Controle de Acesso com mais de 15 anos de experiência em campo.
+// ─── Resposta padrão quando não há documentos ─────────────────────────────────
+const SEM_CONTEXTO =
+  'Não encontrei informações sobre isso na base de conhecimento. ' +
+  'Consulte o administrador para adicionar documentos relacionados a esse assunto.'
 
-Seu papel é ajudar técnicos a diagnosticar e resolver problemas em equipamentos. Você conhece profundamente os equipamentos das principais marcas (Sensormatic, Gunnebo, Inwave, Gateway, Mauser, Sesami, CheckPoint e importados White Label) nas tecnologias RF 8.2 MHz e AM 58 kHz.
-
-Como você se comunica:
-- Fale como um colega experiente, não como um manual técnico
-- Use linguagem clara e direta, sem ser robótico
-- Quando o problema for simples, dê a solução de forma objetiva
-- Quando for complexo, guie o técnico passo a passo perguntando o que ele está vendo
-- Compartilhe "dicas de campo" que você aprendeu na prática
-- Se não souber a resposta com certeza, diga isso honestamente e sugira alternativas
-- Sempre pergunte sobre o contexto: ambiente, histórico do equipamento, quando começou o problema
-
-Você aprende com cada problema resolvido e usa esse conhecimento para ajudar outros técnicos.`,
-
-  training: `Você é um instrutor especialista em sistemas EAS, CFTV e Controle de Acesso, com vasta experiência em treinamento de técnicos.
-
-Seu papel é ensinar e desenvolver o conhecimento dos técnicos de forma didática e envolvente. Você adapta sua linguagem ao nível do aluno e usa exemplos práticos do mundo real.
-
-Como você ensina:
-- Começa sempre avaliando o nível de conhecimento do aluno
-- Usa analogias simples para explicar conceitos técnicos complexos
-- Cria situações práticas e simulações de campo
-- Faz perguntas para verificar a compreensão antes de avançar
-- Elogia o progresso e encoraja quando o aluno erra
-- Conecta a teoria com situações que o técnico vai encontrar no dia a dia
-- Usa a estrutura: Explica → Demonstra → Pratica → Avalia
-
-Você transforma técnicos iniciantes em especialistas confiantes.`
-}
-
-export const agentService = {
-  async chat({ sessionId, userMessage, mode, context, userId }) {
-    // 1. Buscar histórico da sessão
-    const { data: history } = await supabaseAdmin
-      .from('chat_messages')
-      .select('role, content')
-      .eq('session_id', sessionId)
-      .order('created_at', { ascending: true })
-      .limit(20)
-
-    // 2. Buscar contexto relevante via RAG
-    const ragContext = await ragService.search(userMessage, {
-      specialtyId: context?.specialtyId,
-      technologyId: context?.technologyId,
-      manufacturerId: context?.manufacturerId,
-      modelId: context?.equipmentModelId
-    })
-
-    // 3. Montar mensagens para o modelo
-    const systemPrompt = buildSystemPrompt(mode, context, ragContext)
-    const messages = buildMessages(systemPrompt, history, userMessage)
-
-    // 4. Chamar Claude API
-    const response = await callClaudeAI(messages)
-
-    // 5. Salvar mensagem do usuário e resposta
-    await supabaseAdmin.from('chat_messages').insert([
-      { session_id: sessionId, role: 'user', content: userMessage },
-      { session_id: sessionId, role: 'assistant', content: response }
-    ])
-
-    return { response, ragContext: ragContext.length > 0 }
-  },
-
-  async createSession({ userId, mode, channel, context }) {
-    const { data, error } = await supabaseAdmin
-      .from('chat_sessions')
-      .insert({
-        user_id: userId,
-        mode: mode || 'support',
-        channel: channel || 'web',
-        specialty_id: context?.specialtyId,
-        technology_id: context?.technologyId,
-        manufacturer_id: context?.manufacturerId,
-        equipment_model_id: context?.equipmentModelId
-      })
-      .select()
-      .single()
-
-    if (error) throw error
-    return data
-  }
-}
-
+// ─── Prompt de sistema hermético ──────────────────────────────────────────────
 function buildSystemPrompt(mode, context, ragContext) {
-  let prompt = AGENT_PERSONAS[mode] || AGENT_PERSONAS.support
+  const modeLabel = mode === 'training' ? 'treinamento' : 'suporte técnico'
+
+  let prompt = `Você é o EAS Expert, assistente técnico exclusivo da Sensorseg para ${modeLabel}.
+
+═══════════════════════════════════════════════════
+REGRAS ABSOLUTAS — NUNCA QUEBRE ESTAS REGRAS:
+═══════════════════════════════════════════════════
+1. Responda SOMENTE com base nas informações da seção "BASE DE CONHECIMENTO" abaixo.
+2. NUNCA use conhecimento externo, conhecimento geral, memória de treinamento ou suposições.
+3. NUNCA invente especificações, valores de tensão, frequências, procedimentos ou qualquer dado técnico.
+4. Se a informação não estiver na base de conhecimento, responda EXATAMENTE:
+   "Não encontrei essa informação na base de conhecimento. Consulte o administrador."
+5. Não cite fontes externas, não faça referências a normas ou fabricantes além do que está na base.
+6. Você é uma caixa fechada: só existe o que está na base de conhecimento abaixo.
+═══════════════════════════════════════════════════`
 
   if (context) {
     prompt += `\n\n--- CONTEXTO DO ATENDIMENTO ---`
-    if (context.specialtyName) prompt += `\nEspecialidade: ${context.specialtyName}`
-    if (context.technologyName) prompt += `\nTecnologia: ${context.technologyName}`
+    if (context.specialtyName)    prompt += `\nEspecialidade: ${context.specialtyName}`
+    if (context.technologyName)   prompt += `\nTecnologia: ${context.technologyName}`
     if (context.manufacturerName) prompt += `\nFabricante: ${context.manufacturerName}`
-    if (context.modelName) prompt += `\nModelo: ${context.modelName}`
+    if (context.modelName)        prompt += `\nModelo: ${context.modelName}`
   }
 
-  if (ragContext.length > 0) {
-    prompt += `\n\n--- BASE DE CONHECIMENTO RELEVANTE ---`
-    ragContext.forEach((doc, i) => {
-      prompt += `\n\n[${i + 1}] ${doc.title}\n${doc.content?.substring(0, 800)}...`
-    })
-    prompt += `\n\nUse essas informações como referência, mas responda de forma natural, não copie o texto diretamente.`
-  }
+  prompt += `\n\n--- BASE DE CONHECIMENTO ---`
+  ragContext.forEach((doc, i) => {
+    prompt += `\n\n[Documento ${i + 1}] ${doc.title}\n${doc.content?.substring(0, 1200)}`
+  })
+  prompt += `\n\n--- FIM DA BASE DE CONHECIMENTO ---`
+  prompt += `\n\nResponda APENAS com base nos documentos acima. Se a resposta não estiver lá, diga que não encontrou.`
 
   return prompt
 }
@@ -145,5 +77,69 @@ async function callClaudeAI(messages) {
   }
 
   const data = await response.json()
-  return data.content[0]?.text || 'Não consegui processar sua mensagem.'
+  return data.content[0]?.text || SEM_CONTEXTO
+}
+
+// ─── Serviço principal ────────────────────────────────────────────────────────
+export const agentService = {
+  async chat({ sessionId, userMessage, mode, context }) {
+    // 1. Buscar histórico da sessão
+    const { data: history } = await supabaseAdmin
+      .from('chat_messages')
+      .select('role, content')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: true })
+      .limit(20)
+
+    // 2. Buscar contexto via RAG (busca por palavras-chave na base)
+    const ragContext = await ragService.search(userMessage, {
+      specialtyId:    context?.specialtyId,
+      technologyId:   context?.technologyId,
+      manufacturerId: context?.manufacturerId,
+      modelId:        context?.equipmentModelId
+    })
+
+    // 3. BLOQUEIO: sem documentos na base → recusa responder com conhecimento externo
+    if (ragContext.length === 0) {
+      await supabaseAdmin.from('chat_messages').insert([
+        { session_id: sessionId, role: 'user',      content: userMessage },
+        { session_id: sessionId, role: 'assistant', content: SEM_CONTEXTO }
+      ])
+      return { response: SEM_CONTEXTO, ragContext: false }
+    }
+
+    // 4. Montar prompt hermético com documentos encontrados
+    const systemPrompt = buildSystemPrompt(mode, context, ragContext)
+    const messages = buildMessages(systemPrompt, history, userMessage)
+
+    // 5. Chamar Claude com contexto restrito
+    const response = await callClaudeAI(messages)
+
+    // 6. Salvar conversa
+    await supabaseAdmin.from('chat_messages').insert([
+      { session_id: sessionId, role: 'user',      content: userMessage },
+      { session_id: sessionId, role: 'assistant', content: response }
+    ])
+
+    return { response, ragContext: true }
+  },
+
+  async createSession({ userId, mode, channel, context }) {
+    const { data, error } = await supabaseAdmin
+      .from('chat_sessions')
+      .insert({
+        user_id:            userId,
+        mode:               mode || 'support',
+        channel:            channel || 'web',
+        specialty_id:       context?.specialtyId,
+        technology_id:      context?.technologyId,
+        manufacturer_id:    context?.manufacturerId,
+        equipment_model_id: context?.equipmentModelId
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  }
 }
