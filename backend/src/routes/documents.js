@@ -58,11 +58,12 @@ router.post('/upload', requireAdmin, upload.single('file'), async (req, res) => 
 
     if (storageError) throw new Error(`Storage: ${storageError.message}`)
 
-    // 2. URL do arquivo
-    const { data: { publicUrl } } = supabaseAdmin.storage.from('documents').getPublicUrl(filePath)
+    // 2. URL do arquivo (salva via filePath, URL assinada gerada sob demanda)
+    supabaseAdmin.storage.from('documents').getPublicUrl(filePath)
 
-    // 3. Extrair texto para RAG
-    const content = await extractText(file.buffer, file.mimetype, file.originalname)
+    // 3. Extrair texto para RAG (limitado a 200KB para evitar timeout)
+    const rawContent = await extractText(file.buffer, file.mimetype, file.originalname)
+    const content = rawContent.substring(0, 200000)
 
     // 4. Salvar metadados no banco
     const { data: doc, error: dbError } = await supabaseAdmin

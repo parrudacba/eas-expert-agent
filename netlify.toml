@@ -18,7 +18,8 @@
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["pdf-parse"]
+  external_node_modules = ["pdf-parse", "multer"]
+  timeout = 26
 
 [[headers]]
   for = "/*"
