@@ -16,7 +16,7 @@ router.get('/tree', requireAuth, async (req, res) => {
           id, name, slug, frequency,
           manufacturers (
             id, name, slug,
-            equipment_models (id, name, model_code)
+            equipment_models (id, name, model_code, category)
           )
         )
       `)
@@ -51,10 +51,11 @@ router.get('/manufacturers', requireAuth, async (req, res) => {
   res.json({ manufacturers: data || [] })
 })
 
-// GET /knowledge/models?manufacturerId= - Modelos por fabricante
+// GET /knowledge/models?manufacturerId=&category= - Modelos por fabricante (e opcionalmente categoria)
 router.get('/models', requireAuth, async (req, res) => {
-  const query = supabaseAdmin.from('equipment_models').select('*').eq('is_active', true)
-  if (req.query.manufacturerId) query.eq('manufacturer_id', req.query.manufacturerId)
+  let query = supabaseAdmin.from('equipment_models').select('*').eq('is_active', true)
+  if (req.query.manufacturerId) query = query.eq('manufacturer_id', req.query.manufacturerId)
+  if (req.query.category) query = query.eq('category', req.query.category)
   const { data } = await query.order('name')
   res.json({ models: data || [] })
 })
@@ -94,7 +95,7 @@ router.post('/documents', requireAdmin, async (req, res) => {
 // POST /knowledge/models - Adicionar modelo de equipamento (admin)
 router.post('/models', requireAdmin, async (req, res) => {
   try {
-    const { name, modelCode, manufacturerId, description, specifications } = req.body
+    const { name, modelCode, manufacturerId, description, specifications, category } = req.body
 
     const { data, error } = await supabaseAdmin
       .from('equipment_models')
@@ -103,7 +104,8 @@ router.post('/models', requireAdmin, async (req, res) => {
         model_code: modelCode,
         manufacturer_id: manufacturerId,
         description,
-        specifications: specifications || {}
+        specifications: specifications || {},
+        category: category || null
       })
       .select()
       .single()

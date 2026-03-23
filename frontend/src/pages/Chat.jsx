@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { api } from '../services/api.js'
 import { useAuth } from '../contexts/AuthContext.jsx'
 
@@ -89,6 +89,27 @@ function SessionItem({ session, isActive, onClick, onRename, onClear }) {
 // ─── Constantes visuais ───────────────────────────────────────────────────────
 const SPECIALTY_ICONS = { eas: '📡', cftv: '📷', 'controle-acesso': '🔐' }
 const DOC_ICONS = { manual: '📘', technical_doc: '📋', procedure: '📋', bulletin: '📣', other: '📄' }
+const CATEGORY_ICONS = {
+  'Antena': '📡', 'Pedestal': '🚧', 'Antena/Pedestal': '📡',
+  'Desativador': '🔓', 'Verificador': '🔍',
+  'Etiqueta Rígida': '🏷️', 'Etiqueta': '🏷️',
+  'Desacoplador': '🔌',
+  'Câmera': '📷', 'DVR': '🖥️', 'NVR': '🖥️', 'DVR/NVR': '🖥️',
+  'Leitor': '🔐', 'Controlador': '⚙️', 'Eletrofecho': '🔒',
+  'Outros': '📦'
+}
+
+// ─── Utilitário: encontra fabricante na árvore por ID ─────────────────────────
+function findManufacturerInTree(tree, manufacturerId) {
+  for (const specialty of tree) {
+    for (const tech of specialty.technologies || []) {
+      for (const mfr of tech.manufacturers || []) {
+        if (mfr.id === manufacturerId) return mfr
+      }
+    }
+  }
+  return null
+}
 
 // ─── Renderizador de Markdown simples ────────────────────────────────────────
 function parseInline(text) {
@@ -264,6 +285,7 @@ function MessageBubble({ msg, isLast, canTrain, onQuickReply, onCorrect, correct
 export default function Chat() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { user, profile, signOut } = useAuth()
 
   // Dados da árvore de conhecimento
@@ -289,6 +311,7 @@ export default function Chat() {
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
   const treeStartedRef = useRef(false)
+  const mfgContextRef = useRef(null) // fabricante passado pelo Dashboard via nav state
 
   const canTrain = profile?.permissions?.train_agent || profile?.role === 'admin'
 
@@ -324,6 +347,9 @@ export default function Chat() {
 
   // ── Muda de sessão ────────────────────────────────────────────────────────
   useEffect(() => {
+    // Captura fabricante do nav state (vindo do Dashboard) para a árvore de categorias
+    mfgContextRef.current = location.state?.manufacturer || null
+
     if (!sessionId) { setMessages([]); setSelectedDoc(null); treeStartedRef.current = false; return }
     setSelectedDoc(null)
     treeStartedRef.current = false
@@ -360,8 +386,61 @@ export default function Chat() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
+  // ── Árvore de categorias (quando vem do Dashboard com fabricante) ──────────
+  const iniciarArvoreCategorias = useCallback((manufacturer) => {
+    const models = manufacturer.equipment_models || []
+
+    if (!models.length) {
+      setMessages([{
+        role: 'assistant', isTree: true, created_at: new Date(),
+        content: `Nenhum modelo cadastrado para **${manufacturer.name}**. Consulte o administrador.`,
+        quickReplies: []
+      }])
+      return
+    }
+
+    // Agrupa modelos por categoria
+    const grouped = {}
+    models.forEach(m => {
+      const cat = m.category || 'Outros'
+      if (!grouped[cat]) grouped[cat] = []
+      grouped[cat].push(m)
+    })
+    const categories = Object.keys(grouped)
+
+    // Se todos sem categoria OU só uma categoria → vai direto para modelos
+    const realCats = categories.filter(c => c !== 'Outros')
+    if (realCats.length === 0) {
+      setMessages([{
+        role: 'assistant', isTree: true, created_at: new Date(),
+        content: `Qual modelo da **${manufacturer.name}** você precisa consultar?`,
+        quickReplies: models.map(m => ({
+          label: m.name + (m.model_code ? ` (${m.model_code})` : ''),
+          treeAction: { step: 'category_model', item: m }
+        }))
+      }])
+      return
+    }
+
+    // Múltiplas categorias → mostra seleção de tipo
+    setMessages([{
+      role: 'assistant', isTree: true, created_at: new Date(),
+      content: `Qual tipo de equipamento **${manufacturer.name}** você vai consultar?`,
+      quickReplies: categories.map(cat => ({
+        label: cat,
+        icon: CATEGORY_ICONS[cat] || '📦',
+        treeAction: { step: 'category', item: { name: cat, models: grouped[cat], manufacturer } }
+      }))
+    }])
+  }, [])
+
   // ── Monta primeira mensagem da árvore ─────────────────────────────────────
   const iniciarArvore = useCallback(() => {
+    const mfr = mfgContextRef.current
+    if (mfr) {
+      iniciarArvoreCategorias(mfr)
+      return
+    }
     setMessages([{
       role: 'assistant',
       content: 'Para te dar uma resposta precisa, vou localizar o documento correto.\nQual é a especialidade?',
@@ -373,12 +452,48 @@ export default function Chat() {
       })),
       created_at: new Date()
     }])
-  }, [tree])
+  }, [tree, iniciarArvoreCategorias])
+
+  // ── Modelo selecionado via categoria: encerra árvore, ativa RAG ───────────
+  const selecionarModelo = (model, msgUser) => {
+    const welcomeMsg = {
+      role: 'assistant',
+      content: `Modelo selecionado: **${model.name}**\n\nEstou pronto para responder sobre este equipamento com base na documentação disponível. Como posso ajudar?`,
+      quickReplies: QR_INICIAIS.map(label => ({ label })),
+      created_at: new Date()
+    }
+    setMessages(m => [...m, ...(msgUser ? [msgUser] : []), welcomeMsg])
+    setSelectedDoc({ id: '__model__', modelId: model.id, title: model.name, type: 'model' })
+    setTimeout(() => inputRef.current?.focus(), 100)
+  }
 
   // ── Avança na árvore de decisão ───────────────────────────────────────────
   const avancarArvore = useCallback(async (step, item) => {
     const msgUser = { role: 'user', content: item.name || item.title, isTree: true, created_at: new Date() }
 
+    // ── Novos passos: árvore de categorias ───────────────────────────────────
+    if (step === 'category') {
+      const { name: catName, models } = item
+      if (models.length === 1) {
+        selecionarModelo(models[0], msgUser)
+      } else {
+        setMessages(m => [...m, msgUser, {
+          role: 'assistant', isTree: true, created_at: new Date(),
+          content: `Qual modelo de **${catName}** você precisa?`,
+          quickReplies: models.map(mdl => ({
+            label: mdl.name + (mdl.model_code ? ` (${mdl.model_code})` : ''),
+            treeAction: { step: 'category_model', item: mdl }
+          }))
+        }])
+      }
+      return
+
+    } else if (step === 'category_model') {
+      selecionarModelo(item, msgUser)
+      return
+    }
+
+    // ── Árvore completa (sem contexto de fabricante) ──────────────────────────
     if (step === 'specialty') {
       if (item.technologies?.length > 0) {
         setMessages(m => [...m, msgUser, {
@@ -484,21 +599,22 @@ export default function Chat() {
     if (qr.treeAction) {
       if (qr.treeAction.step === 'restart') {
         setSelectedDoc(null)
-        treeStartedRef.current = false
-        // Força reinício da árvore limpando mensagens
+        treeStartedRef.current = true
         setMessages([])
+        const mfr = mfgContextRef.current
         setTimeout(() => {
-          treeStartedRef.current = true
-          setMessages([{
-            role: 'assistant',
-            content: 'Qual é a especialidade?',
-            isTree: true,
-            quickReplies: tree.map(s => ({
-              label: s.name, icon: SPECIALTY_ICONS[s.slug] || '📋',
-              treeAction: { step: 'specialty', item: s }
-            })),
-            created_at: new Date()
-          }])
+          if (mfr) {
+            iniciarArvoreCategorias(mfr)
+          } else {
+            setMessages([{
+              role: 'assistant', isTree: true, created_at: new Date(),
+              content: 'Qual é a especialidade?',
+              quickReplies: tree.map(s => ({
+                label: s.name, icon: SPECIALTY_ICONS[s.slug] || '📋',
+                treeAction: { step: 'specialty', item: s }
+              }))
+            }])
+          }
         }, 0)
         return
       }
@@ -515,13 +631,18 @@ export default function Chat() {
     if (!msg || !sessionId || loading || !selectedDoc || selectedDoc.id === '__history__') return
     if (!texto) setInput('')
 
+    // Contexto: documento específico (árvore completa) ou modelo (árvore de categorias)
+    const msgContext = selectedDoc.type === 'model'
+      ? { equipmentModelId: selectedDoc.modelId }
+      : { documentId: selectedDoc.id }
+
     setMessages(m => [...m, { role: 'user', content: msg, created_at: new Date() }])
     setLoading(true)
     try {
       const result = await api.sendMessage({
         sessionId,
         message: msg,
-        context: { documentId: selectedDoc.id }
+        context: msgContext
       })
       setMessages(m => [...m, {
         role: 'assistant',
@@ -543,28 +664,38 @@ export default function Chat() {
   // ── Índice da última mensagem com quick replies ───────────────────────────
   const lastQRIdx = messages.reduce((acc, m, i) => m.quickReplies?.length ? i : acc, -1)
 
-  // ── Trocar documento ──────────────────────────────────────────────────────
+  // ── Trocar documento / modelo ─────────────────────────────────────────────
   const trocarDocumento = () => {
     setSelectedDoc(null)
     treeStartedRef.current = true
-    setMessages(prev => {
-      const realMsgs = prev.filter(m => !m.isTree)
-      return [...realMsgs, {
-        role: 'assistant', isTree: true, created_at: new Date(),
-        content: 'Qual é a especialidade?',
-        quickReplies: tree.map(s => ({
-          label: s.name, icon: SPECIALTY_ICONS[s.slug] || '📋',
-          treeAction: { step: 'specialty', item: s }
-        }))
-      }]
-    })
+    const mfr = mfgContextRef.current
+    if (mfr) {
+      // Reinicia árvore de categorias (contexto do Dashboard)
+      setMessages(prev => prev.filter(m => !m.isTree))
+      iniciarArvoreCategorias(mfr)
+    } else {
+      // Reinicia árvore completa de especialidades
+      setMessages(prev => {
+        const realMsgs = prev.filter(m => !m.isTree)
+        return [...realMsgs, {
+          role: 'assistant', isTree: true, created_at: new Date(),
+          content: 'Qual é a especialidade?',
+          quickReplies: tree.map(s => ({
+            label: s.name, icon: SPECIALTY_ICONS[s.slug] || '📋',
+            treeAction: { step: 'specialty', item: s }
+          }))
+        }]
+      })
+    }
   }
 
   // ── Placeholder do input ──────────────────────────────────────────────────
   const inputPlaceholder = !selectedDoc
-    ? 'Selecione um documento na árvore acima...'
+    ? 'Selecione o equipamento na árvore acima...'
     : selectedDoc.id === '__history__'
-    ? 'Clique em "Trocar documento" para fazer novas perguntas'
+    ? 'Clique em "Trocar equipamento" para fazer novas perguntas'
+    : selectedDoc.type === 'model'
+    ? `Pergunta sobre ${selectedDoc.title}... (Enter para enviar)`
     : `Pergunta sobre "${selectedDoc.title}"... (Enter para enviar)`
 
   const inputDisabled = !selectedDoc || selectedDoc.id === '__history__' || loading
@@ -609,10 +740,13 @@ export default function Chat() {
             {/* Barra do documento selecionado */}
             {selectedDoc && (
               <div style={styles.docBar}>
-                <span>{DOC_ICONS[selectedDoc.type] || '📄'}</span>
+                <span>{selectedDoc.type === 'model' ? '⚙️' : (DOC_ICONS[selectedDoc.type] || '📄')}</span>
                 <span style={styles.docBarTitle}>{selectedDoc.title}</span>
+                {selectedDoc.type === 'model' && (
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}>• RAG ativo</span>
+                )}
                 <button style={styles.docBarBtn} onClick={trocarDocumento}>
-                  Trocar documento
+                  {selectedDoc.type === 'model' ? 'Trocar equipamento' : 'Trocar documento'}
                 </button>
               </div>
             )}

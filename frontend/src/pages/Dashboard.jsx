@@ -10,7 +10,7 @@ export default function Dashboard() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const [tree, setTree] = useState([])
-  const [selected, setSelected] = useState({ specialty: null, technology: null, manufacturer: null, model: null })
+  const [selected, setSelected] = useState({ specialty: null, technology: null, manufacturer: null })
   const [mode, setMode] = useState('support')
   const [loading, setLoading] = useState(true)
 
@@ -23,11 +23,12 @@ export default function Dashboard() {
       const context = {
         specialtyId: selected.specialty?.id,
         technologyId: selected.technology?.id,
-        manufacturerId: selected.manufacturer?.id,
-        equipmentModelId: selected.model?.id
+        manufacturerId: selected.manufacturer?.id
       }
       const { session } = await api.createSession({ mode, context })
-      navigate(`/chat/${session.id}`)
+      navigate(`/chat/${session.id}`, {
+        state: { manufacturer: selected.manufacturer || null }
+      })
     } catch (err) {
       alert('Erro ao iniciar sessão: ' + err.message)
     }
@@ -94,7 +95,7 @@ export default function Dashboard() {
               <h2 style={styles.sectionTitle}>Especialidade</h2>
               <div style={styles.grid3}>
                 {tree.map(s => (
-                  <button key={s.id} onClick={() => setSelected({ specialty: s, technology: null, manufacturer: null, model: null })}
+                  <button key={s.id} onClick={() => setSelected({ specialty: s, technology: null, manufacturer: null })}
                     style={{ ...styles.treeCard, ...(selected.specialty?.id === s.id ? styles.treeCardActive : {}) }}>
                     <span style={{ fontSize: 28 }}>{ICONS[s.slug] || '📋'}</span>
                     <span style={{ fontWeight: 600 }}>{s.name}</span>
@@ -109,7 +110,7 @@ export default function Dashboard() {
                 <h2 style={styles.sectionTitle}>Tecnologia</h2>
                 <div style={styles.grid3}>
                   {selected.specialty.technologies?.map(t => (
-                    <button key={t.id} onClick={() => setSelected(p => ({ ...p, technology: t, manufacturer: null, model: null }))}
+                    <button key={t.id} onClick={() => setSelected(p => ({ ...p, technology: t, manufacturer: null }))}
                       style={{ ...styles.treeCard, ...(selected.technology?.id === t.id ? styles.treeCardActive : {}) }}>
                       {t.frequency && <span className="badge badge-blue" style={{ fontSize: 11 }}>{t.frequency}</span>}
                       <span style={{ fontWeight: 600, marginTop: 4 }}>{t.name}</span>
@@ -125,7 +126,7 @@ export default function Dashboard() {
                 <h2 style={styles.sectionTitle}>Fabricante</h2>
                 <div style={styles.gridWrap}>
                   {selected.technology.manufacturers?.map(m => (
-                    <button key={m.id} onClick={() => setSelected(p => ({ ...p, manufacturer: m, model: null }))}
+                    <button key={m.id} onClick={() => setSelected(p => ({ ...p, manufacturer: m }))}
                       style={{ ...styles.chip, ...(selected.manufacturer?.id === m.id ? styles.chipActive : {}) }}>
                       {m.name}
                     </button>
@@ -134,20 +135,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Modelo */}
-            {selected.manufacturer && selected.manufacturer.equipment_models?.length > 0 && (
-              <div style={styles.section}>
-                <h2 style={styles.sectionTitle}>Modelo <span style={{ color: 'var(--text-muted)', fontSize: 13, fontWeight: 400 }}>(opcional)</span></h2>
-                <div style={styles.gridWrap}>
-                  {selected.manufacturer.equipment_models.map(m => (
-                    <button key={m.id} onClick={() => setSelected(p => ({ ...p, model: p.model?.id === m.id ? null : m }))}
-                      style={{ ...styles.chip, ...(selected.model?.id === m.id ? styles.chipActive : {}) }}>
-                      {m.name} {m.model_code && <span style={{ opacity: 0.6, fontSize: 11 }}>({m.model_code})</span>}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </>
         )}
 
@@ -156,7 +143,7 @@ export default function Dashboard() {
           {selected.specialty && (
             <div style={styles.contextSummary}>
               <span>📍</span>
-              <span>{[selected.specialty?.name, selected.technology?.name, selected.manufacturer?.name, selected.model?.name].filter(Boolean).join(' › ')}</span>
+              <span>{[selected.specialty?.name, selected.technology?.name, selected.manufacturer?.name].filter(Boolean).join(' › ')}</span>
             </div>
           )}
           <button className="btn btn-primary" onClick={startChat} disabled={!canStart} style={{ padding: '14px 32px', fontSize: 15 }}>

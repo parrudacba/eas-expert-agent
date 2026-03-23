@@ -84,6 +84,7 @@ router.get('/sessions', requireAuth, async (req, res) => {
       .from('chat_sessions')
       .select(`
         id, mode, channel, is_active, created_at, updated_at, name,
+        specialty_id, technology_id, manufacturer_id, equipment_model_id,
         specialties(name),
         technologies(name),
         manufacturers(name),

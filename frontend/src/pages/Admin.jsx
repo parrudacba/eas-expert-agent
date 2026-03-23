@@ -138,6 +138,7 @@ function UploadModal({ tree, onClose, onSuccess }) {
   const [drag, setDrag] = useState(false)
   const [form, setForm] = useState({ title: '', type: 'manual', specialtyId: '', technologyId: '', manufacturerId: '' })
   const [modelName, setModelName] = useState('')          // texto livre do modelo
+  const [modelCategory, setModelCategory] = useState('')  // categoria do modelo (quando criando novo)
   const [technologies, setTechnologies] = useState([])
   const [manufacturers, setManufacturers] = useState([])
   const [models, setModels] = useState([])               // sugestões para autocomplete
@@ -158,14 +159,14 @@ function UploadModal({ tree, onClose, onSuccess }) {
       const t = technologies.find(x => x.id === form.technologyId)
       setManufacturers(t?.manufacturers || [])
       setForm(f => ({ ...f, manufacturerId: '' }))
-      setModels([]); setModelName('')
+      setModels([]); setModelName(''); setModelCategory('')
     }
   }, [form.technologyId])
   useEffect(() => {
     if (form.manufacturerId) {
       const m = manufacturers.find(x => x.id === form.manufacturerId)
       setModels(m?.equipment_models || [])
-      setModelName('')
+      setModelName(''); setModelCategory('')
     }
   }, [form.manufacturerId])
 
@@ -195,7 +196,7 @@ function UploadModal({ tree, onClose, onSuccess }) {
           equipmentModelId = existing.id
         } else {
           // Cria o modelo automaticamente e usa o ID retornado
-          const { model } = await api.addModel({ name: trimmedModel, manufacturerId: form.manufacturerId })
+          const { model } = await api.addModel({ name: trimmedModel, manufacturerId: form.manufacturerId, category: modelCategory.trim() || null })
           equipmentModelId = model.id
         }
       }
@@ -277,6 +278,26 @@ function UploadModal({ tree, onClose, onSuccess }) {
                 {models.map(m => <option key={m.id} value={m.name} />)}
               </datalist>
             </div>
+            {/* Categoria — só exibida quando criando novo modelo */}
+            {modelName.trim() && !models.find(m => m.name.toLowerCase() === modelName.trim().toLowerCase()) && (
+              <div>
+                <label style={M.label}>
+                  Categoria do equipamento
+                  <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>(opcional)</span>
+                </label>
+                <input
+                  value={modelCategory}
+                  onChange={e => setModelCategory(e.target.value)}
+                  list="category-datalist"
+                  placeholder="Ex: Antena/Pedestal, Desativador, Verificador..."
+                  style={M.input}
+                />
+                <datalist id="category-datalist">
+                  {['Antena/Pedestal','Desativador','Verificador','Etiqueta Rígida','Desacoplador','Câmera','DVR/NVR','Leitor','Controlador','Eletrofecho','Outros']
+                    .map(c => <option key={c} value={c} />)}
+                </datalist>
+              </div>
+            )}
           </div>
           {error && <p style={{ color: 'var(--danger)', fontSize: 13 }}>{error}</p>}
           <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
