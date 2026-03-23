@@ -83,7 +83,7 @@ router.get('/sessions', requireAuth, async (req, res) => {
     const { data: sessions } = await supabaseAdmin
       .from('chat_sessions')
       .select(`
-        id, mode, channel, is_active, created_at, updated_at,
+        id, mode, channel, is_active, created_at, updated_at, name,
         specialties(name),
         technologies(name),
         manufacturers(name),
@@ -94,6 +94,50 @@ router.get('/sessions', requireAuth, async (req, res) => {
       .limit(50)
 
     res.json({ sessions: sessions || [] })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// PATCH /chat/session/:id - Renomear sessão
+router.patch('/session/:id', requireAuth, async (req, res) => {
+  try {
+    const { name } = req.body
+
+    const { data, error } = await supabaseAdmin
+      .from('chat_sessions')
+      .update({ name: name?.trim() || null })
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .select('id, name')
+      .single()
+
+    if (error) throw error
+    res.json({ session: data })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// DELETE /chat/session/:id/messages - Limpar mensagens (mantém a sessão)
+router.delete('/session/:id/messages', requireAuth, async (req, res) => {
+  try {
+    // Verifica que a sessão pertence ao usuário
+    const { data: session } = await supabaseAdmin
+      .from('chat_sessions')
+      .select('id')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .single()
+
+    if (!session) return res.status(404).json({ error: 'Sessão não encontrada' })
+
+    await supabaseAdmin
+      .from('chat_messages')
+      .delete()
+      .eq('session_id', req.params.id)
+
+    res.json({ success: true })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

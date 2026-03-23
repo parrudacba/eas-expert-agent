@@ -31,6 +31,8 @@ export const api = {
   sendMessage: (body) => request('/chat/message', { method: 'POST', body: JSON.stringify(body) }),
   getHistory: (sessionId) => request(`/chat/session/${sessionId}/history`),
   getSessions: () => request('/chat/sessions'),
+  renameSession: (id, name) => request(`/chat/session/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  clearSession: (id) => request(`/chat/session/${id}/messages`, { method: 'DELETE' }),
 
   // Field issues
   createIssue: (body) => request('/knowledge/field-issues', { method: 'POST', body: JSON.stringify(body) }),

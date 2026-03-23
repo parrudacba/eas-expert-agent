@@ -3,6 +3,89 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../services/api.js'
 import { useAuth } from '../contexts/AuthContext.jsx'
 
+// ─── Componente: Item de sessão na sidebar (com rename + clear) ───────────────
+function SessionItem({ session, isActive, onClick, onRename, onClear }) {
+  const [renaming, setRenaming]       = useState(false)
+  const [nameInput, setNameInput]     = useState('')
+  const [showActions, setShowActions] = useState(false)
+  const [pendingClear, setPendingClear] = useState(false)
+  const inputRef = useRef(null)
+
+  const displayName = session.name || session.specialties?.name || 'Nova conversa'
+
+  const startRename = (e) => {
+    e.stopPropagation()
+    setNameInput(session.name || '')
+    setRenaming(true)
+    setTimeout(() => inputRef.current?.select(), 40)
+  }
+
+  const saveRename = () => {
+    setRenaming(false)
+    const trimmed = nameInput.trim()
+    if (trimmed !== (session.name || '')) onRename(trimmed)
+  }
+
+  const handleRenameKey = (e) => {
+    if (e.key === 'Enter')  { e.preventDefault(); saveRename() }
+    if (e.key === 'Escape') { setRenaming(false); setNameInput(session.name || '') }
+  }
+
+  const handleClear = (e) => {
+    e.stopPropagation()
+    if (pendingClear) {
+      onClear()
+      setPendingClear(false)
+    } else {
+      setPendingClear(true)
+      setTimeout(() => setPendingClear(false), 3000)
+    }
+  }
+
+  return (
+    <div
+      style={{ ...sbStyles.item, ...(isActive ? sbStyles.itemActive : {}) }}
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => { setShowActions(false); setPendingClear(false) }}
+      onClick={!renaming ? onClick : undefined}
+    >
+      <span style={sbStyles.icon}>{session.mode === 'support' ? '🔧' : '🎓'}</span>
+
+      <div style={sbStyles.info}>
+        {renaming ? (
+          <input
+            ref={inputRef}
+            value={nameInput}
+            onChange={e => setNameInput(e.target.value)}
+            onBlur={saveRename}
+            onKeyDown={handleRenameKey}
+            onClick={e => e.stopPropagation()}
+            style={sbStyles.renameInput}
+            placeholder="Nome da conversa"
+            maxLength={60}
+          />
+        ) : (
+          <span style={sbStyles.name} title={displayName}>{displayName}</span>
+        )}
+        <span style={sbStyles.date}>{new Date(session.created_at).toLocaleDateString('pt-BR')}</span>
+      </div>
+
+      {(showActions || isActive) && !renaming && (
+        <div style={sbStyles.actions} onClick={e => e.stopPropagation()}>
+          <button style={sbStyles.actionBtn} onClick={startRename} title="Renomear">✏️</button>
+          <button
+            style={{ ...sbStyles.actionBtn, ...(pendingClear ? sbStyles.actionBtnWarn : {}) }}
+            onClick={handleClear}
+            title={pendingClear ? 'Clique novamente para confirmar' : 'Limpar conversa'}
+          >
+            {pendingClear ? '✓?' : '🗑️'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Constantes visuais ───────────────────────────────────────────────────────
 const SPECIALTY_ICONS = { eas: '📡', cftv: '📷', 'controle-acesso': '🔐' }
 const DOC_ICONS = { manual: '📘', technical_doc: '📋', procedure: '📋', bulletin: '📣', other: '📄' }
@@ -208,6 +291,26 @@ export default function Chat() {
   const treeStartedRef = useRef(false)
 
   const canTrain = profile?.permissions?.train_agent || profile?.role === 'admin'
+
+  // ── Renomear sessão ───────────────────────────────────────────────────────
+  const handleRename = useCallback(async (id, name) => {
+    try {
+      await api.renameSession(id, name)
+      setSessions(prev => prev.map(s => s.id === id ? { ...s, name: name || null } : s))
+    } catch { /* silencia — o usuário pode tentar de novo */ }
+  }, [])
+
+  // ── Limpar mensagens da sessão ────────────────────────────────────────────
+  const handleClear = useCallback(async (id) => {
+    try {
+      await api.clearSession(id)
+      if (id === sessionId) {
+        setMessages([])
+        setSelectedDoc(null)
+        treeStartedRef.current = false
+      }
+    } catch { /* silencia */ }
+  }, [sessionId])
 
   // ── Carrega lista de sessões ───────────────────────────────────────────────
   useEffect(() => {
@@ -476,14 +579,14 @@ export default function Chat() {
         </div>
         <div style={styles.sessionList}>
           {sessions.map(s => (
-            <button key={s.id} onClick={() => navigate(`/chat/${s.id}`)}
-              style={{ ...styles.sessionItem, ...(s.id === sessionId ? styles.sessionActive : {}) }}>
-              <span style={styles.sessionIcon}>{s.mode === 'support' ? '🔧' : '🎓'}</span>
-              <div style={styles.sessionInfo}>
-                <span style={styles.sessionName}>{s.specialties?.name || 'Geral'}</span>
-                <span style={styles.sessionDate}>{new Date(s.created_at).toLocaleDateString('pt-BR')}</span>
-              </div>
-            </button>
+            <SessionItem
+              key={s.id}
+              session={s}
+              isActive={s.id === sessionId}
+              onClick={() => navigate(`/chat/${s.id}`)}
+              onRename={(name) => handleRename(s.id, name)}
+              onClear={() => handleClear(s.id)}
+            />
           ))}
           {sessions.length === 0 && <p style={styles.emptyList}>Nenhuma conversa ainda</p>}
         </div>
@@ -514,8 +617,23 @@ export default function Chat() {
               </div>
             )}
 
-            {/* Mensagens */}
-            <div style={styles.messages}>
+            {/* Mensagens — bloqueio de cópia + marca d'água */}
+            <div
+              style={{ ...styles.messages, position: 'relative', userSelect: 'none' }}
+              onCopy={e => e.preventDefault()}
+              onContextMenu={e => e.preventDefault()}
+              onDragStart={e => e.preventDefault()}
+            >
+              {/* Marca d'água diagonal repetida */}
+              <div style={wmStyles.container} aria-hidden="true">
+                {Array.from({ length: 18 }).map((_, i) => (
+                  <div key={i} style={{ ...wmStyles.text, top: `${(i * 11) % 95}%`, left: `${(i * 17) % 85}%` }}>
+                    {user?.email} • SENSORSEG CONFIDENCIAL
+                  </div>
+                ))}
+              </div>
+              {/* Conteúdo acima da marca d'água */}
+              <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
               {messages.map((m, i) => (
                 <MessageBubble
                   key={i}
@@ -551,7 +669,8 @@ export default function Chat() {
               )}
 
               <div ref={bottomRef} />
-            </div>
+              </div>{/* fim zIndex content */}
+            </div>{/* fim messages */}
 
             {/* Input */}
             <div style={styles.inputArea}>
@@ -663,6 +782,26 @@ const styles = {
   inputArea: { display: 'flex', gap: 12, padding: '14px 28px', borderTop: '1px solid var(--border)', background: 'var(--bg)', flexShrink: 0 },
   textarea:  { flex: 1, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '12px 14px', resize: 'none', lineHeight: 1.5, maxHeight: 120, fontFamily: 'inherit', fontSize: 14 },
   sendBtn:   { flexShrink: 0, alignSelf: 'flex-end' }
+}
+
+// ─── Estilos: Sidebar SessionItem ────────────────────────────────────────────
+const sbStyles = {
+  item:          { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', color: 'var(--text)', transition: 'background 0.15s', position: 'relative' },
+  itemActive:    { background: 'var(--primary-light)' },
+  icon:          { fontSize: 16, flexShrink: 0 },
+  info:          { flex: 1, display: 'flex', flexDirection: 'column', gap: 1, overflow: 'hidden' },
+  name:          { fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  date:          { fontSize: 11, color: 'var(--text-muted)' },
+  renameInput:   { width: '100%', background: 'var(--bg)', border: '1px solid var(--primary)', borderRadius: 5, color: 'var(--text)', fontSize: 12, padding: '2px 6px', outline: 'none' },
+  actions:       { display: 'flex', gap: 2, flexShrink: 0 },
+  actionBtn:     { background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, padding: '2px 4px', borderRadius: 4, opacity: 0.7, lineHeight: 1 },
+  actionBtnWarn: { background: 'rgba(231,76,60,0.15)', opacity: 1, fontWeight: 700, fontSize: 11, color: '#e74c3c' }
+}
+
+// ─── Estilos: Marca d'água ─────────────────────────────────────────────────
+const wmStyles = {
+  container: { position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 0 },
+  text:      { position: 'absolute', transform: 'rotate(-35deg)', opacity: 0.045, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', color: 'var(--text)', userSelect: 'none', letterSpacing: '0.04em' }
 }
 
 // ─── Estilos: Correção ────────────────────────────────────────────────────────
