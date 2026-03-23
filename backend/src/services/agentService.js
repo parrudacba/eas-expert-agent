@@ -7,7 +7,7 @@ const SEM_CONTEXTO =
   'Consulte o administrador para adicionar documentos relacionados a esse assunto.'
 
 // ─── Prompt de sistema hermético ──────────────────────────────────────────────
-function buildSystemPrompt(mode, context, ragContext) {
+function buildSystemPrompt(mode, context, ragContext, corrections = []) {
   const modeLabel = mode === 'training' ? 'treinamento' : 'suporte técnico'
 
   let prompt = `Você é o EAS Expert, assistente técnico exclusivo da Sensorseg para ${modeLabel}.
@@ -32,12 +32,21 @@ REGRAS ABSOLUTAS — NUNCA QUEBRE ESTAS REGRAS:
     if (context.modelName)        prompt += `\nModelo: ${context.modelName}`
   }
 
+  if (corrections.length > 0) {
+    prompt += `\n\n--- CORREÇÕES VALIDADAS (PRIORIDADE MÁXIMA) ---`
+    prompt += `\nEstas respostas foram corrigidas e validadas por administradores. Use-as como resposta definitiva:`
+    corrections.forEach((c, i) => {
+      prompt += `\n\n[Correção ${i + 1}]\nPergunta: ${c.question}\nResposta correta: ${c.correct_response}`
+    })
+    prompt += `\n\n--- FIM DAS CORREÇÕES ---`
+  }
+
   prompt += `\n\n--- BASE DE CONHECIMENTO ---`
   ragContext.forEach((doc, i) => {
     prompt += `\n\n[Documento ${i + 1}] ${doc.title}\n${doc.content?.substring(0, 1200)}`
   })
   prompt += `\n\n--- FIM DA BASE DE CONHECIMENTO ---`
-  prompt += `\n\nResponda APENAS com base nos documentos acima. Se a resposta não estiver lá, diga que não encontrou.`
+  prompt += `\n\nResponda APENAS com base nas correções validadas e documentos acima. Se a resposta não estiver lá, diga que não encontrou.`
 
   return prompt
 }
@@ -91,7 +100,17 @@ export const agentService = {
       .order('created_at', { ascending: true })
       .limit(20)
 
-    // 2. Buscar contexto via RAG (busca por palavras-chave na base)
+    // 2. Buscar correções validadas por admins (prioridade máxima)
+    const keywords = userMessage.toLowerCase().split(/\s+/).filter(w => w.length > 3)
+    const { data: allCorrections } = await supabaseAdmin
+      .from('agent_corrections')
+      .select('question, correct_response')
+      .eq('is_active', true)
+    const corrections = (allCorrections || []).filter(c =>
+      keywords.some(w => c.question.toLowerCase().includes(w))
+    )
+
+    // 3. Buscar contexto via RAG (busca por palavras-chave na base)
     const ragContext = await ragService.search(userMessage, {
       specialtyId:    context?.specialtyId,
       technologyId:   context?.technologyId,
@@ -99,8 +118,8 @@ export const agentService = {
       modelId:        context?.equipmentModelId
     })
 
-    // 3. BLOQUEIO: sem documentos na base → recusa responder com conhecimento externo
-    if (ragContext.length === 0) {
+    // 4. BLOQUEIO: sem documentos nem correções → recusa responder
+    if (ragContext.length === 0 && corrections.length === 0) {
       await supabaseAdmin.from('chat_messages').insert([
         { session_id: sessionId, role: 'user',      content: userMessage },
         { session_id: sessionId, role: 'assistant', content: SEM_CONTEXTO }
@@ -108,8 +127,8 @@ export const agentService = {
       return { response: SEM_CONTEXTO, ragContext: false }
     }
 
-    // 4. Montar prompt hermético com documentos encontrados
-    const systemPrompt = buildSystemPrompt(mode, context, ragContext)
+    // 5. Montar prompt hermético com documentos e correções validadas
+    const systemPrompt = buildSystemPrompt(mode, context, ragContext, corrections)
     const messages = buildMessages(systemPrompt, history, userMessage)
 
     // 5. Chamar Claude com contexto restrito

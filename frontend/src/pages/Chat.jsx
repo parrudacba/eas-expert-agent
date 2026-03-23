@@ -3,16 +3,92 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../services/api.js'
 import { useAuth } from '../contexts/AuthContext.jsx'
 
+function CorrectionModal({ message, question, onSave, onCancel }) {
+  const [title, setTitle] = useState('')
+  const [correct, setCorrect] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSave = async () => {
+    if (!title.trim() || !correct.trim()) return
+    setSaving(true)
+    try {
+      await api.submitCorrection({
+        question: title.trim(),
+        originalResponse: message,
+        correctResponse: correct.trim()
+      })
+      onSave()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={corrStyles.overlay} onClick={e => e.target === e.currentTarget && onCancel()}>
+      <div style={corrStyles.modal}>
+        <div style={corrStyles.modalHeader}>
+          <span style={{ fontSize: 20 }}>🎓</span>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Contribuir Correção</h3>
+        </div>
+        <p style={corrStyles.modalDesc}>
+          Como Expert, você pode corrigir respostas do agente. Sua contribuição será usada para melhorar as próximas respostas.
+        </p>
+
+        <label style={corrStyles.fieldLabel}>Título da Correção <span style={{ color: '#e74c3c' }}>*</span></label>
+        <input
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          placeholder="Ex: Correção sobre tensão de alimentação Ultra 1.8"
+          style={corrStyles.input}
+          autoFocus
+        />
+
+        <label style={corrStyles.fieldLabel}>Correção / Informação Correta <span style={{ color: '#e74c3c' }}>*</span></label>
+        <textarea
+          value={correct}
+          onChange={e => setCorrect(e.target.value)}
+          placeholder="Descreva a informação correta que deve substituir ou complementar a resposta..."
+          rows={5}
+          style={corrStyles.textarea}
+        />
+
+        <div style={corrStyles.tip}>
+          <span style={{ fontSize: 14 }}>💡</span>
+          <span style={{ fontSize: 12, color: '#555' }}>
+            Dica: Seja específico e inclua detalhes técnicos. Use a seção de Documentos para adicionar manuais e arquivos de apoio.
+          </span>
+        </div>
+
+        {error && <p style={{ color: '#e74c3c', fontSize: 12, margin: '4px 0 0' }}>{error}</p>}
+
+        <div style={corrStyles.modalFooter}>
+          <button onClick={onCancel} style={corrStyles.btnCancel}>Cancelar</button>
+          <button onClick={handleSave} disabled={saving || !title.trim() || !correct.trim()} style={corrStyles.btnSave}>
+            {saving ? 'Salvando...' : '💾 Salvar Correção'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Chat() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
-  const { user, signOut } = useAuth()
+  const { user, profile, signOut } = useAuth()
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [sessions, setSessions] = useState([])
+  const [correcting, setCorrecting] = useState(null) // index of message being corrected
+  const [savedCorrection, setSavedCorrection] = useState(null)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
+
+  const canTrain = profile?.permissions?.train_agent || profile?.role === 'admin'
 
   useEffect(() => {
     api.getSessions().then(r => setSessions(r.sessions || []))
@@ -96,14 +172,30 @@ export default function Chat() {
                   <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Descreva o problema ou o que deseja aprender.</p>
                 </div>
               )}
-              {messages.map((m, i) => (
-                <div key={i} style={{ ...styles.msg, ...(m.role === 'user' ? styles.msgUser : styles.msgAssistant) }}>
-                  {m.role === 'assistant' && <span style={styles.msgAvatar}>⚡</span>}
-                  <div style={{ ...styles.bubble, ...(m.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant) }}>
-                    <p style={styles.msgContent}>{m.content}</p>
+              {messages.map((m, i) => {
+                const prevUser = messages.slice(0, i).reverse().find(x => x.role === 'user')
+                return (
+                  <div key={i} style={{ ...styles.msg, ...(m.role === 'user' ? styles.msgUser : styles.msgAssistant) }}>
+                    {m.role === 'assistant' && <span style={styles.msgAvatar}>⚡</span>}
+                    <div style={{ maxWidth: '100%' }}>
+                      <div style={{ ...styles.bubble, ...(m.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant) }}>
+                        <p style={styles.msgContent}>{m.content}</p>
+                      </div>
+                      {m.role === 'assistant' && canTrain && (
+                        <div style={{ marginTop: 6 }}>
+                          {savedCorrection === i ? (
+                            <span style={corrStyles.saved}>✓ Correção salva!</span>
+                          ) : (
+                            <button onClick={() => setCorrecting(i)} style={corrStyles.trainBtn}>
+                              ✏ Corrigir
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
               {loading && (
                 <div style={{ ...styles.msg, ...styles.msgAssistant }}>
                   <span style={styles.msgAvatar}>⚡</span>
@@ -132,6 +224,15 @@ export default function Chat() {
           </>
         )}
       </div>
+
+      {correcting !== null && (
+        <CorrectionModal
+          message={messages[correcting]?.content || ''}
+          question={messages.slice(0, correcting).reverse().find(x => x.role === 'user')?.content || ''}
+          onSave={() => { setSavedCorrection(correcting); setCorrecting(null) }}
+          onCancel={() => setCorrecting(null)}
+        />
+      )}
 
       <style>{`
         .typing { display: flex; gap: 5px; align-items: center; padding: 14px 18px !important; }
@@ -176,4 +277,47 @@ const styles = {
   inputArea: { display: 'flex', gap: 12, padding: '16px 32px', borderTop: '1px solid var(--border)', background: 'var(--bg)' },
   textarea: { flex: 1, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', padding: '12px 14px', resize: 'none', lineHeight: 1.5, maxHeight: 120 },
   sendBtn: { flexShrink: 0, alignSelf: 'flex-end' }
+}
+
+const corrStyles = {
+  trainBtn: {
+    background: 'none', border: 'none', cursor: 'pointer',
+    color: '#888', fontSize: 12, display: 'flex', alignItems: 'center',
+    gap: 4, padding: '2px 0', textDecoration: 'underline', textDecorationStyle: 'dotted'
+  },
+  saved: { fontSize: 12, color: '#27ae60', fontWeight: 500 },
+  overlay: {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+  },
+  modal: {
+    background: '#fff', borderRadius: 12, padding: 28, width: '100%', maxWidth: 480,
+    boxShadow: '0 20px 60px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', gap: 14
+  },
+  modalHeader: { display: 'flex', alignItems: 'center', gap: 10 },
+  modalDesc: { fontSize: 13, color: '#555', margin: 0, lineHeight: 1.5 },
+  fieldLabel: { fontSize: 13, fontWeight: 600, color: '#333' },
+  input: {
+    width: '100%', padding: '10px 12px', borderRadius: 8,
+    border: '1px solid #ddd', fontSize: 14, outline: 'none', boxSizing: 'border-box'
+  },
+  textarea: {
+    width: '100%', padding: '10px 12px', borderRadius: 8,
+    border: '1px solid #ddd', fontSize: 14, resize: 'vertical', outline: 'none',
+    boxSizing: 'border-box', fontFamily: 'inherit', lineHeight: 1.5
+  },
+  tip: {
+    background: '#eaf4ff', border: '1px solid #c3dff7', borderRadius: 8,
+    padding: '10px 14px', display: 'flex', gap: 8, alignItems: 'flex-start'
+  },
+  modalFooter: { display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 },
+  btnCancel: {
+    padding: '10px 20px', borderRadius: 8, border: '1px solid #ddd',
+    background: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 500
+  },
+  btnSave: {
+    padding: '10px 20px', borderRadius: 8, border: 'none',
+    background: '#1a73e8', color: '#fff', cursor: 'pointer', fontSize: 14,
+    fontWeight: 600, opacity: 1
+  }
 }

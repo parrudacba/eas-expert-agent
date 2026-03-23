@@ -4,6 +4,7 @@ import { api } from '../services/api.js'
 import { useAuth } from '../contexts/AuthContext.jsx'
 
 const PERMISSIONS = [
+  { key: 'train_agent',      label: 'Treinar Agente',         desc: 'Corrigir e treinar respostas do agente' },
   { key: 'chat_support',     label: 'Chat de Suporte',        desc: 'Atendimento via chat técnico' },
   { key: 'chat_training',    label: 'Modo Treinamento',       desc: 'Acesso ao chat de treinamento' },
   { key: 'field_issues',     label: 'Problemas de Campo',     desc: 'Registrar e consultar problemas de campo' },
@@ -13,10 +14,10 @@ const PERMISSIONS = [
 ]
 
 const ROLE_DEFAULTS = {
-  admin:      { chat_support: true,  chat_training: true, field_issues: true, knowledge_read: true, knowledge_upload: true,  admin_panel: true  },
-  manager:    { chat_support: true,  chat_training: true, field_issues: true, knowledge_read: true, knowledge_upload: true,  admin_panel: false },
-  technician: { chat_support: true,  chat_training: true, field_issues: true, knowledge_read: true, knowledge_upload: false, admin_panel: false },
-  trainee:    { chat_support: false, chat_training: true, field_issues: false, knowledge_read: true, knowledge_upload: false, admin_panel: false },
+  admin:      { train_agent: true,  chat_support: true,  chat_training: true, field_issues: true,  knowledge_read: true, knowledge_upload: true,  admin_panel: true  },
+  manager:    { train_agent: true,  chat_support: true,  chat_training: true, field_issues: true,  knowledge_read: true, knowledge_upload: true,  admin_panel: false },
+  technician: { train_agent: false, chat_support: true,  chat_training: true, field_issues: true,  knowledge_read: true, knowledge_upload: false, admin_panel: false },
+  trainee:    { train_agent: false, chat_support: false, chat_training: true, field_issues: false, knowledge_read: true, knowledge_upload: false, admin_panel: false },
 }
 
 const ROLE_LABELS = { admin: 'Administrador', manager: 'Gestor', technician: 'Técnico', trainee: 'Trainee' }

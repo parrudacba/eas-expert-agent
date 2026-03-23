@@ -57,6 +57,11 @@ export const api = {
   addAuthorizedEmail: (body) => request('/admin/authorized-emails', { method: 'POST', body: JSON.stringify(body) }),
   removeAuthorizedEmail: (id) => request(`/admin/authorized-emails/${id}`, { method: 'DELETE' }),
 
+  // Corrections (treinar agente)
+  submitCorrection: (body) => request('/corrections', { method: 'POST', body: JSON.stringify(body) }),
+  getCorrections: () => request('/corrections'),
+  deleteCorrection: (id) => request(`/corrections/${id}`, { method: 'DELETE' }),
+
   // Documents
   getDocuments: (params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([,v]) => v)).toString()

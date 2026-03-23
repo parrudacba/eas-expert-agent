@@ -18,6 +18,22 @@ export async function requireAuth(req, res, next) {
   next()
 }
 
+export async function requireTrainAgent(req, res, next) {
+  await requireAuth(req, res, async () => {
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('role, permissions')
+      .eq('id', req.user.id)
+      .single()
+
+    if (!profile || (!profile.permissions?.train_agent && profile.role !== 'admin')) {
+      return res.status(403).json({ error: 'Sem permissão para treinar o agente' })
+    }
+    req.profile = profile
+    next()
+  })
+}
+
 export async function requireAdmin(req, res, next) {
   await requireAuth(req, res, async () => {
     const { data: profile } = await supabaseAdmin

@@ -9,6 +9,7 @@ import knowledgeRoutes from './routes/knowledge.js'
 import adminRoutes from './routes/admin.js'
 import documentRoutes from './routes/documents.js'
 import publicRoutes from './routes/public.js'
+import correctionsRoutes from './routes/corrections.js'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -47,6 +48,7 @@ app.use('/knowledge', knowledgeRoutes)
 app.use('/admin', adminRoutes)
 app.use('/documents', documentRoutes)
 app.use('/public', publicRoutes)
+app.use('/corrections', correctionsRoutes)
 
 // 404
 app.use((req, res) => res.status(404).json({ error: 'Rota não encontrada' }))
