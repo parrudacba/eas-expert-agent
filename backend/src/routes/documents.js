@@ -120,9 +120,13 @@ router.post('/process', requireAdmin, async (req, res) => {
     }
     const mimetype = mimeMap[ext] || 'application/octet-stream'
 
-    // 3. Extrair texto (limitado a 200KB)
-    const rawContent = await extractText(buffer, mimetype, filePath)
-    const content = rawContent.substring(0, 200000)
+    // 3. Extrair texto com timeout de 20s (se falhar, salva com placeholder)
+    const content = await Promise.race([
+      extractText(buffer, mimetype, filePath),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 20000))
+    ])
+      .then(text => text.substring(0, 200000))
+      .catch(() => `[Documento: ${title} — conteúdo será indexado manualmente]`)
 
     // 4. Salvar no banco
     const { data: doc, error: dbError } = await supabaseAdmin
