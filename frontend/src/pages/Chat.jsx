@@ -303,6 +303,14 @@ export default function Chat() {
 
   // Sidebar
   const [sessions, setSessions] = useState([])
+  const [sessionsLoaded, setSessionsLoaded] = useState(false)
+
+  // Fabricante resolvido para a sessão atual
+  // undefined = ainda não determinado | null = confirmado sem fabricante | objeto = fabricante
+  const navMfr = location.state?.manufacturer // fabricante do nav state (Dashboard)
+  const [mfgContext, setMfgContext] = useState(
+    location.state !== null && location.state !== undefined ? (navMfr || null) : undefined
+  )
 
   // Correções
   const [correcting, setCorrecting] = useState(null)
@@ -311,7 +319,6 @@ export default function Chat() {
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
   const treeStartedRef = useRef(false)
-  const mfgContextRef = useRef(null) // fabricante passado pelo Dashboard via nav state
 
   const canTrain = profile?.permissions?.train_agent || profile?.role === 'admin'
 
@@ -337,7 +344,7 @@ export default function Chat() {
 
   // ── Carrega lista de sessões ───────────────────────────────────────────────
   useEffect(() => {
-    api.getSessions().then(r => setSessions(r.sessions || []))
+    api.getSessions().then(r => { setSessions(r.sessions || []); setSessionsLoaded(true) })
   }, [])
 
   // ── Carrega árvore de conhecimento ────────────────────────────────────────
@@ -347,8 +354,12 @@ export default function Chat() {
 
   // ── Muda de sessão ────────────────────────────────────────────────────────
   useEffect(() => {
-    // Captura fabricante do nav state (vindo do Dashboard) para a árvore de categorias
-    mfgContextRef.current = location.state?.manufacturer || null
+    // Resolve o fabricante para esta sessão a partir do nav state
+    if (location.state !== null && location.state !== undefined) {
+      setMfgContext(location.state.manufacturer || null)  // vem do Dashboard
+    } else {
+      setMfgContext(undefined)  // aguarda fallback via sessions + tree
+    }
 
     if (!sessionId) { setMessages([]); setSelectedDoc(null); treeStartedRef.current = false; return }
     setSelectedDoc(null)
@@ -366,6 +377,19 @@ export default function Chat() {
     })
   }, [sessionId])
 
+  // ── Fallback: resolve fabricante a partir das sessões (quando não vem do Dashboard) ─
+  useEffect(() => {
+    if (mfgContext !== undefined) return  // já resolvido
+    if (!sessionsLoaded || !tree.length || !sessionId) return
+    const sess = sessions.find(s => s.id === sessionId)
+    if (sess?.manufacturer_id) {
+      const mfr = findManufacturerInTree(tree, sess.manufacturer_id)
+      setMfgContext(mfr || null)
+    } else {
+      setMfgContext(null)  // sessão sem fabricante → árvore completa
+    }
+  }, [mfgContext, sessionsLoaded, sessions, sessionId, tree])
+
   // ── Inicia árvore quando sessão nova + árvore pronta ─────────────────────
   useEffect(() => {
     if (
@@ -374,12 +398,13 @@ export default function Chat() {
       tree.length > 0 &&
       messages.length === 0 &&
       !selectedDoc &&
-      !treeStartedRef.current
+      !treeStartedRef.current &&
+      mfgContext !== undefined   // aguarda resolução do fabricante
     ) {
       treeStartedRef.current = true
-      iniciarArvore()
+      iniciarArvore(mfgContext)
     }
-  }, [sessionId, treeReady, tree, messages.length, selectedDoc])
+  }, [sessionId, treeReady, tree, messages.length, selectedDoc, mfgContext])
 
   // ── Scroll automático ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -435,8 +460,7 @@ export default function Chat() {
   }, [])
 
   // ── Monta primeira mensagem da árvore ─────────────────────────────────────
-  const iniciarArvore = useCallback(() => {
-    const mfr = mfgContextRef.current
+  const iniciarArvore = useCallback((mfr) => {
     if (mfr) {
       iniciarArvoreCategorias(mfr)
       return
@@ -601,10 +625,9 @@ export default function Chat() {
         setSelectedDoc(null)
         treeStartedRef.current = true
         setMessages([])
-        const mfr = mfgContextRef.current
         setTimeout(() => {
-          if (mfr) {
-            iniciarArvoreCategorias(mfr)
+          if (mfgContext) {
+            iniciarArvoreCategorias(mfgContext)
           } else {
             setMessages([{
               role: 'assistant', isTree: true, created_at: new Date(),
@@ -623,7 +646,7 @@ export default function Chat() {
       // Quick reply real → envia como mensagem do usuário
       await enviarMensagem(qr.label)
     }
-  }, [tree, avancarArvore])
+  }, [tree, avancarArvore, mfgContext, iniciarArvoreCategorias])
 
   // ── Envio de mensagem ao agente ───────────────────────────────────────────
   const enviarMensagem = async (texto) => {
@@ -668,11 +691,10 @@ export default function Chat() {
   const trocarDocumento = () => {
     setSelectedDoc(null)
     treeStartedRef.current = true
-    const mfr = mfgContextRef.current
-    if (mfr) {
+    if (mfgContext) {
       // Reinicia árvore de categorias (contexto do Dashboard)
       setMessages(prev => prev.filter(m => !m.isTree))
-      iniciarArvoreCategorias(mfr)
+      iniciarArvoreCategorias(mfgContext)
     } else {
       // Reinicia árvore completa de especialidades
       setMessages(prev => {
