@@ -18,8 +18,7 @@ export const ragService = {
       // Montar query no Supabase
       let dbQuery = supabaseAdmin
         .from('documents')
-        .select('id, title, content, document_type')
-        .eq('status', 'active')
+        .select('id, title, content, type')
 
       // Aplicar filtros de contexto
       if (filters.specialtyId)    dbQuery = dbQuery.eq('specialty_id', filters.specialtyId)
@@ -44,7 +43,7 @@ export const ragService = {
       return (docs || []).map(doc => ({
         title: doc.title,
         content: doc.content,
-        type: doc.document_type
+        type: doc.type
       }))
     } catch (err) {
       console.error('RAG search error:', err.message)
