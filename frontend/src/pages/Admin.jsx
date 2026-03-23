@@ -178,12 +178,17 @@ function UploadModal({ tree, onClose, onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!file) { setError('Selecione um arquivo'); return }
+    if (!form.title) { setError('Título obrigatório'); return }
     setLoading(true); setError('')
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      Object.entries(form).forEach(([k, v]) => { if (v) fd.append(k, v) })
-      const result = await api.uploadDocument(fd)
+      const result = await api.uploadDocument(file, {
+        title: form.title,
+        type: form.type,
+        specialtyId: form.specialtyId || null,
+        technologyId: form.technologyId || null,
+        manufacturerId: form.manufacturerId || null,
+        equipmentModelId: form.equipmentModelId || null
+      })
       onSuccess(result.document)
     } catch (err) { setError(err.message) }
     finally { setLoading(false) }

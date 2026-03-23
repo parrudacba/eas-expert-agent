@@ -64,15 +64,22 @@ export const api = {
   },
   getDocumentUrl: (id) => request(`/documents/${id}/url`),
   deleteDocument: (id) => request(`/documents/${id}`, { method: 'DELETE' }),
-  uploadDocument: async (formData) => {
-    const { data: { session } } = await (await import('./supabase.js')).supabase.auth.getSession()
-    const BASE = import.meta.env.VITE_API_URL || '/api'
-    const res = await fetch(`${BASE}/documents/upload`, {
+  // Upload direto ao Supabase Storage + processa texto via backend
+  uploadDocument: async (file, meta) => {
+    const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
+    const filePath = `documents/${fileName}`
+
+    // 1. Upload do arquivo direto ao Supabase Storage (sem limite de 6MB do Netlify)
+    const { error: storageError } = await supabase.storage
+      .from('documents')
+      .upload(filePath, file, { contentType: file.type, upsert: false })
+
+    if (storageError) throw new Error(`Erro no storage: ${storageError.message}`)
+
+    // 2. Backend extrai texto do arquivo já no Storage e salva no banco
+    return request('/documents/process', {
       method: 'POST',
-      headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
-      body: formData
+      body: JSON.stringify({ filePath, ...meta })
     })
-    if (!res.ok) { const e = await res.json(); throw new Error(e.error) }
-    return res.json()
   }
 }

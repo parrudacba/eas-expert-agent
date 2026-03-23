@@ -95,6 +95,59 @@ router.post('/upload', requireAdmin, upload.single('file'), async (req, res) => 
   }
 })
 
+// POST /documents/process - Processar arquivo já enviado ao Supabase Storage
+router.post('/process', requireAdmin, async (req, res) => {
+  try {
+    const { filePath, title, type, specialtyId, technologyId, manufacturerId, equipmentModelId } = req.body
+    if (!filePath || !title) return res.status(400).json({ error: 'filePath e title são obrigatórios' })
+
+    // 1. Baixar arquivo do Supabase Storage (server-to-server, sem limite de 6MB)
+    const { data: fileData, error: downloadError } = await supabaseAdmin.storage
+      .from('documents')
+      .download(filePath)
+
+    if (downloadError) throw new Error(`Download storage: ${downloadError.message}`)
+
+    const arrayBuffer = await fileData.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
+    // 2. Detectar tipo pelo path
+    const ext = filePath.split('.').pop().toLowerCase()
+    const mimeMap = {
+      pdf:  'application/pdf',
+      txt:  'text/plain',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    }
+    const mimetype = mimeMap[ext] || 'application/octet-stream'
+
+    // 3. Extrair texto (limitado a 200KB)
+    const rawContent = await extractText(buffer, mimetype, filePath)
+    const content = rawContent.substring(0, 200000)
+
+    // 4. Salvar no banco
+    const { data: doc, error: dbError } = await supabaseAdmin
+      .from('documents')
+      .insert({
+        title, type: type || 'manual', content, file_url: filePath,
+        specialty_id:       specialtyId       || null,
+        technology_id:      technologyId      || null,
+        manufacturer_id:    manufacturerId    || null,
+        equipment_model_id: equipmentModelId  || null,
+        metadata: { ext, size: buffer.length },
+        created_by: req.user.id
+      })
+      .select()
+      .single()
+
+    if (dbError) throw new Error(`DB: ${dbError.message}`)
+
+    res.status(201).json({ document: doc, extracted: content.length > 0 })
+  } catch (err) {
+    console.error('Process error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // GET /documents - Listar documentos com filtros
 router.get('/', requireAuth, async (req, res) => {
   try {
