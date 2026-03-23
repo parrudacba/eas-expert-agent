@@ -136,10 +136,11 @@ function CreateUserModal({ onClose, onSuccess }) {
 function UploadModal({ tree, onClose, onSuccess }) {
   const [file, setFile] = useState(null)
   const [drag, setDrag] = useState(false)
-  const [form, setForm] = useState({ title: '', type: 'manual', specialtyId: '', technologyId: '', manufacturerId: '', equipmentModelId: '' })
+  const [form, setForm] = useState({ title: '', type: 'manual', specialtyId: '', technologyId: '', manufacturerId: '' })
+  const [modelName, setModelName] = useState('')          // texto livre do modelo
   const [technologies, setTechnologies] = useState([])
   const [manufacturers, setManufacturers] = useState([])
-  const [models, setModels] = useState([])
+  const [models, setModels] = useState([])               // sugestões para autocomplete
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const inputRef = useRef()
@@ -148,23 +149,23 @@ function UploadModal({ tree, onClose, onSuccess }) {
     if (form.specialtyId) {
       const s = tree.find(x => x.id === form.specialtyId)
       setTechnologies(s?.technologies || [])
-      setForm(f => ({ ...f, technologyId: '', manufacturerId: '', equipmentModelId: '' }))
-      setManufacturers([]); setModels([])
+      setForm(f => ({ ...f, technologyId: '', manufacturerId: '' }))
+      setManufacturers([]); setModels([]); setModelName('')
     }
   }, [form.specialtyId])
   useEffect(() => {
     if (form.technologyId) {
       const t = technologies.find(x => x.id === form.technologyId)
       setManufacturers(t?.manufacturers || [])
-      setForm(f => ({ ...f, manufacturerId: '', equipmentModelId: '' }))
-      setModels([])
+      setForm(f => ({ ...f, manufacturerId: '' }))
+      setModels([]); setModelName('')
     }
   }, [form.technologyId])
   useEffect(() => {
     if (form.manufacturerId) {
       const m = manufacturers.find(x => x.id === form.manufacturerId)
       setModels(m?.equipment_models || [])
-      setForm(f => ({ ...f, equipmentModelId: '' }))
+      setModelName('')
     }
   }, [form.manufacturerId])
 
@@ -182,13 +183,30 @@ function UploadModal({ tree, onClose, onSuccess }) {
     if (!form.title) { setError('Título obrigatório'); return }
     setLoading(true); setError('')
     try {
+      // Resolve o modelo: busca existente (case-insensitive) ou cria novo
+      let equipmentModelId = null
+      const trimmedModel = modelName.trim()
+      if (trimmedModel && form.manufacturerId) {
+        const existing = models.find(
+          m => m.name.toLowerCase() === trimmedModel.toLowerCase() ||
+               m.model_code?.toLowerCase() === trimmedModel.toLowerCase()
+        )
+        if (existing) {
+          equipmentModelId = existing.id
+        } else {
+          // Cria o modelo automaticamente e usa o ID retornado
+          const { model } = await api.addModel({ name: trimmedModel, manufacturerId: form.manufacturerId })
+          equipmentModelId = model.id
+        }
+      }
+
       const result = await api.uploadDocument(file, {
         title: form.title,
         type: form.type,
         specialtyId: form.specialtyId || null,
         technologyId: form.technologyId || null,
         manufacturerId: form.manufacturerId || null,
-        equipmentModelId: form.equipmentModelId || null
+        equipmentModelId
       })
       onSuccess(result.document)
     } catch (err) { setError(err.message) }
@@ -240,11 +258,24 @@ function UploadModal({ tree, onClose, onSuccess }) {
                 {manufacturers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
             </div>
-            <div><label style={M.label}>Modelo</label>
-              <select value={form.equipmentModelId} onChange={e => setForm(p => ({ ...p, equipmentModelId: e.target.value }))} style={M.select} disabled={!models.length}>
-                <option value="">Todos</option>
-                {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
+            <div>
+              <label style={M.label}>
+                Modelo
+                {modelName.trim() && !models.find(m => m.name.toLowerCase() === modelName.trim().toLowerCase()) && (
+                  <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--primary)', fontWeight: 500 }}>✦ será criado</span>
+                )}
+              </label>
+              <input
+                value={modelName}
+                onChange={e => setModelName(e.target.value)}
+                list="model-datalist"
+                placeholder={form.manufacturerId ? 'Digite o modelo...' : 'Selecione o fabricante primeiro'}
+                disabled={!form.manufacturerId}
+                style={{ ...M.input, opacity: form.manufacturerId ? 1 : 0.5 }}
+              />
+              <datalist id="model-datalist">
+                {models.map(m => <option key={m.id} value={m.name} />)}
+              </datalist>
             </div>
           </div>
           {error && <p style={{ color: 'var(--danger)', fontSize: 13 }}>{error}</p>}
