@@ -455,10 +455,10 @@ export default function Chat() {
           }))
         }])
       }
-    } catch {
+    } catch (err) {
       setMessages(m => [...m, {
         role: 'assistant', isTree: true, created_at: new Date(),
-        content: 'Erro ao buscar documentos. Tente novamente.',
+        content: `Erro ao buscar documentos: ${err?.message || 'Tente novamente.'}`,
         quickReplies: [{ label: '↩ Recomeçar', treeAction: { step: 'restart', item: null } }]
       }])
     } finally {

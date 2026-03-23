@@ -163,8 +163,7 @@ router.get('/', requireAuth, async (req, res) => {
         specialties(id, name, slug),
         technologies(id, name, slug),
         manufacturers(id, name),
-        equipment_models(id, name, model_code),
-        profiles!created_by(full_name)
+        equipment_models(id, name, model_code)
       `)
       .eq('is_active', true)
       .order('created_at', { ascending: false })
