@@ -8,7 +8,6 @@ function SessionItem({ session, isActive, onClick, onRename, onClear }) {
   const [renaming, setRenaming]       = useState(false)
   const [nameInput, setNameInput]     = useState('')
   const [showActions, setShowActions] = useState(false)
-  const [pendingClear, setPendingClear] = useState(false)
   const inputRef = useRef(null)
 
   const displayName = session.name || session.specialties?.name || 'Nova conversa'
@@ -33,20 +32,14 @@ function SessionItem({ session, isActive, onClick, onRename, onClear }) {
 
   const handleClear = (e) => {
     e.stopPropagation()
-    if (pendingClear) {
-      onClear()
-      setPendingClear(false)
-    } else {
-      setPendingClear(true)
-      setTimeout(() => setPendingClear(false), 3000)
-    }
+    if (window.confirm('Confirma a exclusão desta conversa?')) onClear()
   }
 
   return (
     <div
       style={{ ...sbStyles.item, ...(isActive ? sbStyles.itemActive : {}) }}
       onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => { setShowActions(false); setPendingClear(false) }}
+      onMouseLeave={() => setShowActions(false)}
       onClick={!renaming ? onClick : undefined}
     >
       <span style={sbStyles.icon}>{session.mode === 'support' ? '🔧' : '🎓'}</span>
@@ -73,13 +66,7 @@ function SessionItem({ session, isActive, onClick, onRename, onClear }) {
       {(showActions || isActive) && !renaming && (
         <div style={sbStyles.actions} onClick={e => e.stopPropagation()}>
           <button style={sbStyles.actionBtn} onClick={startRename} title="Renomear">✏️</button>
-          <button
-            style={{ ...sbStyles.actionBtn, ...(pendingClear ? sbStyles.actionBtnWarn : {}) }}
-            onClick={handleClear}
-            title={pendingClear ? 'Clique novamente para confirmar' : 'Limpar conversa'}
-          >
-            {pendingClear ? '✓?' : '🗑️'}
-          </button>
+          <button style={sbStyles.actionBtn} onClick={handleClear} title="Excluir conversa">🗑️</button>
         </div>
       )}
     </div>
