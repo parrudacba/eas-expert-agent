@@ -238,6 +238,61 @@ const QR_INICIAIS = [
   'Solução de problemas comuns'
 ]
 
+// ─── Componente: Modal de Correção de Foto ───────────────────────────────────
+function PhotoCorrectionModal({ agentResponse, onSave, onCancel }) {
+  const [whatSaw, setWhatSaw]   = useState('')
+  const [whatWrong, setWhatWrong] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    if (!whatSaw.trim()) return
+    setSaving(true)
+    try {
+      await api.submitCorrection({
+        question: `[CORREÇÃO DE FOTO] Análise visual incorreta. Resposta do agente: ${agentResponse?.substring(0, 200)}`,
+        correct_response: `O que estava na foto: ${whatSaw.trim()}${whatWrong ? '\nO que estava errado: ' + whatWrong.trim() : ''}`,
+        type: 'photo_correction'
+      })
+      onSave()
+    } catch (err) { alert('Erro: ' + err.message) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div style={corrStyles.overlay} onClick={e => e.target === e.currentTarget && onCancel()}>
+      <div style={{ ...corrStyles.modal, maxWidth: 440 }}>
+        <div style={corrStyles.modalHeader}>
+          <span style={{ fontSize: 22 }}>📷</span>
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Corrigir Análise Visual</h3>
+            <p style={{ ...corrStyles.modalDesc, marginTop: 2 }}>Ajude a melhorar o reconhecimento de imagens do agente</p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <label style={corrStyles.fieldLabel}>O que você vê na foto? *</label>
+            <textarea value={whatSaw} onChange={e => setWhatSaw(e.target.value)}
+              placeholder="Ex: Antena Sensormatic Ultra 1.8, placa principal, jumper J5 no canto superior direito..."
+              rows={3} style={{ ...corrStyles.textarea, marginTop: 6 }} />
+          </div>
+          <div>
+            <label style={corrStyles.fieldLabel}>O que o agente errou no diagnóstico? (opcional)</label>
+            <textarea value={whatWrong} onChange={e => setWhatWrong(e.target.value)}
+              placeholder="Ex: Identificou o modelo errado, indicou foto de referência irrelevante, diagnóstico incorreto..."
+              rows={2} style={{ ...corrStyles.textarea, marginTop: 6 }} />
+          </div>
+        </div>
+        <div style={corrStyles.footer}>
+          <button onClick={onCancel} style={corrStyles.btnCancel}>Cancelar</button>
+          <button onClick={handleSave} disabled={saving || !whatSaw.trim()} style={{ ...corrStyles.btnSave, background: '#e67e22' }}>
+            {saving ? 'Salvando...' : '📷 Enviar Correção'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Componente: Modal de Correção ────────────────────────────────────────────
 function CorrectionModal({ message, onSave, onCancel }) {
   const [title, setTitle] = useState('')
@@ -335,7 +390,9 @@ function MessageBubble({ msg, isLast, canTrain, onQuickReply, onCorrect, correct
             {correctionSaved ? (
               <span style={corrStyles.saved}>✓ Correção salva!</span>
             ) : (
-              <button onClick={onCorrect} style={corrStyles.trainBtn}>✏ Corrigir</button>
+              <button onClick={onCorrect} style={{ ...corrStyles.trainBtn, color: msg.isPhotoAnalysis ? '#e67e22' : '#888' }}>
+                {msg.isPhotoAnalysis ? '📷 Corrigir foto' : '✏ Corrigir'}
+              </button>
             )}
           </div>
         )}
@@ -380,9 +437,11 @@ export default function Chat() {
     location.state !== null && location.state !== undefined ? (navMfr || null) : undefined
   )
 
-  // Correções
+  // Correções texto
   const [correcting, setCorrecting] = useState(null)
   const [savedCorrections, setSavedCorrections] = useState(new Set())
+  // Correção foto
+  const [correctingPhoto, setCorrectingPhoto] = useState(null) // { content, index }
 
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
@@ -393,7 +452,8 @@ export default function Chat() {
 
   // ── Voz (Web Speech API) ──────────────────────────────────────────────────
   const [listening, setListening] = useState(false)
-  const recognitionRef = useRef(null)
+  const recognitionRef    = useRef(null)
+  const voiceTranscriptRef = useRef('')   // guarda transcrição final para auto-envio
 
   const startVoice = useCallback(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -403,12 +463,22 @@ export default function Chat() {
     rec.lang = 'pt-BR'
     rec.interimResults = true
     rec.continuous = false
-    rec.onstart  = () => setListening(true)
-    rec.onend    = () => setListening(false)
-    rec.onerror  = () => setListening(false)
+    rec.onstart  = () => { setListening(true); voiceTranscriptRef.current = '' }
+    rec.onerror  = () => { setListening(false) }
     rec.onresult = (e) => {
       const transcript = Array.from(e.results).map(r => r[0].transcript).join('')
+      voiceTranscriptRef.current = transcript
       setInput(transcript)
+    }
+    rec.onend = () => {
+      setListening(false)
+      const finalText = voiceTranscriptRef.current.trim()
+      voiceTranscriptRef.current = ''
+      // Auto-envia ao terminar a fala (se houver texto e documento selecionado)
+      if (finalText) {
+        setInput('')
+        enviarMensagemRef.current?.(finalText)
+      }
     }
     recognitionRef.current = rec
     rec.start()
@@ -436,6 +506,7 @@ export default function Chat() {
         role: 'assistant',
         content: result.response,
         quickReplies: [],
+        isPhotoAnalysis: true,
         created_at: new Date()
       }])
     } catch (err) {
@@ -942,7 +1013,7 @@ export default function Chat() {
                   isLast={i === lastQRIdx}
                   canTrain={canTrain}
                   onQuickReply={handleQuickReply}
-                  onCorrect={() => setCorrecting(i)}
+                  onCorrect={() => m.isPhotoAnalysis ? setCorrectingPhoto({ content: m.content, index: i }) : setCorrecting(i)}
                   correctionSaved={savedCorrections.has(i)}
                   documentId={selectedDoc?.id}
                 />
@@ -1018,12 +1089,21 @@ export default function Chat() {
         )}
       </div>
 
-      {/* Modal de correção */}
+      {/* Modal de correção de texto */}
       {correcting !== null && (
         <CorrectionModal
           message={messages[correcting]?.content || ''}
           onSave={() => { setSavedCorrections(s => new Set([...s, correcting])); setCorrecting(null) }}
           onCancel={() => setCorrecting(null)}
+        />
+      )}
+
+      {/* Modal de correção de foto */}
+      {correctingPhoto !== null && (
+        <PhotoCorrectionModal
+          agentResponse={correctingPhoto.content}
+          onSave={() => { setSavedCorrections(s => new Set([...s, correctingPhoto.index])); setCorrectingPhoto(null) }}
+          onCancel={() => setCorrectingPhoto(null)}
         />
       )}
 

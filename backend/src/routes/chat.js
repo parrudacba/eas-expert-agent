@@ -232,7 +232,16 @@ router.post('/analyze-photo', requireAuth, upload.single('photo'), async (req, r
     }
 
     const userText = message?.trim() || 'Analise esta foto e me ajude a identificar o equipamento e qualquer problema visível.'
-    imageContent.push({ type: 'text', text: `\n--- PERGUNTA DO TÉCNICO ---\n${userText}\n\nResponda em português com diagnóstico técnico preciso. Se identificar o equipamento, aponte qual ajuste, falha ou procedimento é necessário. Use as fotos de referência para comparar.` })
+    imageContent.push({ type: 'text', text: `\n--- PERGUNTA DO TÉCNICO ---\n${userText}
+
+INSTRUÇÕES DE ANÁLISE:
+1. Descreva exatamente o que você vê na foto enviada pelo técnico (equipamento, estado, componentes visíveis)
+2. Identifique marca, modelo e tipo de equipamento SE claramente visível — não adivinhe
+3. SE as fotos de referência forem do MESMO equipamento/modelo, use-as para comparação detalhada
+4. SE as fotos de referência NÃO corresponderem ao equipamento fotografado, IGNORE-AS e diga: "As fotos de referência disponíveis não correspondem ao equipamento nesta foto."
+5. Aponte problemas visíveis, ajustes necessários ou procedimentos recomendados COM BASE NO QUE VOCÊ VÊ
+6. Se a foto estiver escura, borrada ou sem detalhes suficientes, peça uma foto mais clara
+7. Responda sempre em português, de forma objetiva e técnica` })
 
     // 4. Chama Claude Vision
     const response = await fetch('https://api.anthropic.com/v1/messages', {
