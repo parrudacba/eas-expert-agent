@@ -846,10 +846,14 @@ export default function Chat() {
         message: msg,
         context: msgContext
       })
+      const hasOptions = Array.isArray(result.options) && result.options.length > 0
       setMessages(m => [...m, {
         role: 'assistant',
         content: result.response,
-        quickReplies: (result.quickReplies || []).map(label => ({ label })),
+        isTree: hasOptions,  // usa estilo árvore quando há opções clicáveis
+        quickReplies: hasOptions
+          ? result.options.map(label => ({ label }))  // opções viram botões — sem treeAction, click envia como msg
+          : (result.quickReplies || []).map(label => ({ label })),
         created_at: new Date()
       }])
     } catch (err) {

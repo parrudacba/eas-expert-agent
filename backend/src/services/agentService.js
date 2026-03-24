@@ -70,13 +70,29 @@ REGRAS:
 FORMATO DE SAÍDA OBRIGATÓRIO — JSON VÁLIDO:
 ═══════════════════════════════════════════════════
 Retorne SEMPRE exatamente este JSON, sem nenhum texto fora dele:
-{"response":"<sua resposta técnica completa aqui, com [PAGINA:N] se relevante>","quickReplies":["<pergunta curta 1>","<pergunta curta 2>","<pergunta curta 3>"]}
+{"response":"<texto>","quickReplies":["<pergunta 1>","<pergunta 2>"],"options":[]}
 
-Regras para "quickReplies":
-- Inclua 2 a 3 perguntas curtas e objetivas que o técnico provavelmente faria a seguir
-- As perguntas devem ser diretamente relacionadas ao documento e à pergunta atual
-- Se não houver perguntas relevantes, retorne um array vazio: []
-- Nunca escreva texto fora do JSON`
+━━━ CAMPO "options" — ÁRVORE DE DECISÃO INTERATIVA ━━━
+USE "options" quando o usuário pedir algo que tem MÚLTIPLOS sub-itens no documento
+(procedimentos, etapas, configurações, tópicos, modos de operação, etc.).
+
+REGRA: em vez de listar tudo em texto corrido, coloque os nomes curtos no array "options".
+O campo "response" deve ser apenas uma frase introdutória curta (ex: "Encontrei os seguintes procedimentos. Qual você quer aprofundar?").
+O usuário vai CLICAR em um botão para selecionar — então aí sim você dá a resposta completa.
+
+Quando USAR "options": "Procedimento de instalação", "Quais configurações?", "Solução de problemas", "Especificações técnicas", "Como fazer manutenção?", "Quais componentes?", etc.
+Quando NÃO usar "options": quando o usuário já especificou exatamente o que quer (ex: "Como configurar o jumper J5?") — nesse caso dê a resposta direta sem "options".
+
+Regras para "options":
+- Máximo de 8 itens, cada um com máximo 50 caracteres
+- Se não houver sub-itens a navegar, deixe o array vazio: []
+
+━━━ CAMPO "quickReplies" ━━━
+- Inclua 2 a 3 perguntas curtas que o técnico faria a seguir
+- Só preencha quando "options" estiver vazio (não use os dois ao mesmo tempo)
+- Se não houver perguntas relevantes, retorne array vazio: []
+
+Nunca escreva texto fora do JSON`
 
   return prompt
 }
@@ -91,7 +107,7 @@ function buildMessages(systemPrompt, history, userMessage) {
 
 // ─── Parser robusto da resposta do Claude ────────────────────────────────────
 function parseClaudeResponse(rawText) {
-  if (!rawText) return { response: SEM_CONTEXTO, quickReplies: [] }
+  if (!rawText) return { response: SEM_CONTEXTO, quickReplies: [], options: [] }
 
   // Tenta extrair JSON do texto (Claude às vezes adiciona texto antes/depois)
   const jsonMatch = rawText.match(/\{[\s\S]*\}/)
@@ -99,11 +115,17 @@ function parseClaudeResponse(rawText) {
     try {
       const parsed = JSON.parse(jsonMatch[0])
       if (parsed.response) {
+        const options = Array.isArray(parsed.options)
+          ? parsed.options.filter(o => typeof o === 'string' && o.trim()).slice(0, 8)
+          : []
         return {
           response: parsed.response,
-          quickReplies: Array.isArray(parsed.quickReplies)
-            ? parsed.quickReplies.filter(r => typeof r === 'string' && r.trim()).slice(0, 4)
-            : []
+          quickReplies: options.length > 0
+            ? []  // quando há options, não usa quickReplies
+            : Array.isArray(parsed.quickReplies)
+              ? parsed.quickReplies.filter(r => typeof r === 'string' && r.trim()).slice(0, 4)
+              : [],
+          options
         }
       }
     } catch {
@@ -112,7 +134,7 @@ function parseClaudeResponse(rawText) {
   }
 
   // Fallback: retornar como texto puro sem quick replies
-  return { response: rawText, quickReplies: [] }
+  return { response: rawText, quickReplies: [], options: [] }
 }
 
 async function callClaudeAI(messages) {
@@ -202,8 +224,8 @@ export const agentService = {
     const systemPrompt = buildSystemPrompt(mode, context, ragContext, corrections)
     const messages = buildMessages(systemPrompt, history, userMessage)
 
-    // 6. Chamar Claude — retorna { response, quickReplies }
-    const { response, quickReplies } = await callClaudeAI(messages)
+    // 6. Chamar Claude — retorna { response, quickReplies, options }
+    const { response, quickReplies, options } = await callClaudeAI(messages)
 
     // 7. Salvar conversa (só o texto da resposta, sem os quick replies)
     await supabaseAdmin.from('chat_messages').insert([
@@ -211,7 +233,7 @@ export const agentService = {
       { session_id: sessionId, role: 'assistant', content: response }
     ])
 
-    return { response, quickReplies, ragContext: true }
+    return { response, quickReplies, options, ragContext: true }
   },
 
   async createSession({ userId, mode, channel, context }) {
