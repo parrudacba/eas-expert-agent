@@ -704,7 +704,7 @@ export default function Chat() {
   const enviarMensagem = async (texto) => {
     const msg = (texto || input).trim()
     if (!msg || !sessionId || loading || !selectedDoc || selectedDoc.id === '__history__') return
-    if (!texto) setInput('')
+    setInput('')
 
     // Contexto: documento específico (árvore completa) ou modelo (árvore de categorias)
     const msgContext = selectedDoc.type === 'model'
