@@ -306,6 +306,7 @@ export default function Chat() {
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
   const treeStartedRef = useRef(false)
+  const enviarMensagemRef = useRef(null)  // always-current ref — avoids stale closure in handleQuickReply
 
   const canTrain = profile?.permissions?.train_agent || profile?.role === 'admin'
 
@@ -614,7 +615,7 @@ export default function Chat() {
       await avancarArvore(qr.treeAction.step, qr.treeAction.item)
     } else {
       // Quick reply real → envia como mensagem do usuário
-      await enviarMensagem(qr.label)
+      await enviarMensagemRef.current?.(qr.label)
     }
   }, [tree, avancarArvore, mfgContext, iniciarArvoreCategorias])
 
@@ -650,6 +651,8 @@ export default function Chat() {
       inputRef.current?.focus()
     }
   }
+
+  enviarMensagemRef.current = enviarMensagem  // keep ref current every render
 
   const send = () => enviarMensagem(input.trim())
   const handleKey = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }
