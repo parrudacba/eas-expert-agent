@@ -342,10 +342,10 @@ export default function Chat() {
     } catch { /* silencia */ }
   }, [sessionId])
 
-  // ── Carrega lista de sessões ───────────────────────────────────────────────
+  // ── Carrega lista de sessões (recarrega quando sessionId muda para incluir novas sessões) ───
   useEffect(() => {
     api.getSessions().then(r => { setSessions(r.sessions || []); setSessionsLoaded(true) })
-  }, [])
+  }, [sessionId])
 
   // ── Carrega árvore de conhecimento ────────────────────────────────────────
   useEffect(() => {
