@@ -33,6 +33,7 @@ export const api = {
   getSessions: () => request('/chat/sessions'),
   renameSession: (id, name) => request(`/chat/session/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   clearSession: (id) => request(`/chat/session/${id}/messages`, { method: 'DELETE' }),
+  deleteSession: (id) => request(`/chat/session/${id}`, { method: 'DELETE' }),
 
   // Field issues
   createIssue: (body) => request('/knowledge/field-issues', { method: 'POST', body: JSON.stringify(body) }),

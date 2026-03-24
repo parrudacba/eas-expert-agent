@@ -144,4 +144,25 @@ router.delete('/session/:id/messages', requireAuth, async (req, res) => {
   }
 })
 
+// DELETE /chat/session/:id - Excluir sessão completamente
+router.delete('/session/:id', requireAuth, async (req, res) => {
+  try {
+    const { data: session } = await supabaseAdmin
+      .from('chat_sessions')
+      .select('id')
+      .eq('id', req.params.id)
+      .eq('user_id', req.user.id)
+      .single()
+
+    if (!session) return res.status(404).json({ error: 'Sessão não encontrada' })
+
+    await supabaseAdmin.from('chat_messages').delete().eq('session_id', req.params.id)
+    await supabaseAdmin.from('chat_sessions').delete().eq('id', req.params.id)
+
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 export default router

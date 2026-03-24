@@ -330,17 +330,16 @@ export default function Chat() {
     } catch { /* silencia — o usuário pode tentar de novo */ }
   }, [])
 
-  // ── Limpar mensagens da sessão ────────────────────────────────────────────
+  // ── Excluir sessão completamente ──────────────────────────────────────────
   const handleClear = useCallback(async (id) => {
     try {
-      await api.clearSession(id)
-      if (id === sessionId) {
-        setMessages([])
-        setSelectedDoc(null)
-        treeStartedRef.current = false
-      }
-    } catch { /* silencia */ }
-  }, [sessionId])
+      await api.deleteSession(id)
+      setSessions(prev => prev.filter(s => s.id !== id))
+      if (id === sessionId) navigate('/')
+    } catch (err) {
+      alert('Erro ao excluir conversa: ' + err.message)
+    }
+  }, [sessionId, navigate])
 
   // ── Carrega lista de sessões (recarrega quando sessionId muda para incluir novas sessões) ───
   useEffect(() => {
