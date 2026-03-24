@@ -206,32 +206,66 @@ router.post('/process', requireAdmin, async (req, res) => {
   }
 })
 
-// POST /documents/:id/analyze — re-analisa documento com Vision (admin)
+// POST /documents/:id/analyze — re-analisa documento com Vision (admin) — ASSÍNCRONO
+// Retorna 202 imediatamente; análise roda em background; frontend faz polling via GET /documents
 router.post('/:id/analyze', requireAdmin, async (req, res) => {
   try {
-    const { data: doc } = await supabaseAdmin.from('documents').select('file_url, title, metadata').eq('id', req.params.id).single()
+    const { data: doc } = await supabaseAdmin
+      .from('documents')
+      .select('file_url, title, metadata')
+      .eq('id', req.params.id)
+      .single()
+
     if (!doc?.file_url) return res.status(404).json({ error: 'Documento não encontrado' })
 
     const ext = doc.file_url.split('.').pop().toLowerCase()
     if (ext !== 'pdf') return res.status(400).json({ error: 'Análise visual disponível apenas para PDFs' })
 
-    const { data: fileData, error: downloadError } = await supabaseAdmin.storage.from('documents').download(doc.file_url)
-    if (downloadError) throw new Error(`Download: ${downloadError.message}`)
-
-    const buffer = Buffer.from(await fileData.arrayBuffer())
-
-    const visionContent = await Promise.race([
-      analyzeWithVision(buffer, doc.title),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 22000))
-    ])
-
-    if (!visionContent) return res.status(408).json({ error: 'Timeout na análise visual. Tente novamente.' })
-
-    await supabaseAdmin.from('documents')
-      .update({ content: visionContent.substring(0, 200000), metadata: { ...doc.metadata, vision_enriched: true } })
+    // Marca como "em análise" no banco e responde IMEDIATAMENTE
+    await supabaseAdmin
+      .from('documents')
+      .update({ metadata: { ...doc.metadata, analyzing: true, vision_enriched: false, vision_error: false } })
       .eq('id', req.params.id)
 
-    res.json({ success: true, chars: visionContent.length })
+    res.status(202).json({ processing: true })
+
+    // ── Análise em background (fire-and-forget) ────────────────────────────
+    ;(async () => {
+      try {
+        const { data: fileData, error: downloadError } = await supabaseAdmin.storage
+          .from('documents')
+          .download(doc.file_url)
+
+        if (downloadError) throw new Error(`Download: ${downloadError.message}`)
+
+        const buffer = Buffer.from(await fileData.arrayBuffer())
+
+        // Timeout generoso: 90s (Claude Vision para PDFs grandes pode demorar)
+        const visionContent = await Promise.race([
+          analyzeWithVision(buffer, doc.title),
+          new Promise(resolve => setTimeout(() => resolve(null), 90000))
+        ])
+
+        if (visionContent) {
+          await supabaseAdmin.from('documents').update({
+            content: visionContent.substring(0, 200000),
+            metadata: { ...doc.metadata, analyzing: false, vision_enriched: true, vision_error: false }
+          }).eq('id', req.params.id)
+          console.log(`Vision analysis done for doc ${req.params.id}: ${visionContent.length} chars`)
+        } else {
+          await supabaseAdmin.from('documents').update({
+            metadata: { ...doc.metadata, analyzing: false, vision_enriched: false, vision_error: true }
+          }).eq('id', req.params.id)
+          console.error(`Vision analysis timeout for doc ${req.params.id}`)
+        }
+      } catch (bgErr) {
+        console.error(`Vision background error for doc ${req.params.id}:`, bgErr.message)
+        await supabaseAdmin.from('documents').update({
+          metadata: { ...doc.metadata, analyzing: false, vision_error: true }
+        }).eq('id', req.params.id).catch(() => {})
+      }
+    })()
+
   } catch (err) {
     console.error('Analyze error:', err)
     res.status(500).json({ error: err.message })

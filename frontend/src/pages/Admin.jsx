@@ -441,8 +441,37 @@ export default function Admin() {
     setDocuments(d => d.map(x => x.id === id ? { ...x, _analyzing: true } : x))
     try {
       const result = await api.analyzeDocument(id)
-      alert(`✅ Análise visual concluída! ${result.chars?.toLocaleString() || 0} caracteres extraídos.`)
-      setDocuments(d => d.map(x => x.id === id ? { ...x, _analyzing: false, metadata: { ...x.metadata, vision_enriched: true } } : x))
+
+      if (result.processing) {
+        // Análise iniciada em background — faz polling a cada 5s por até 3 min
+        const started = Date.now()
+        const pollInterval = setInterval(async () => {
+          try {
+            const { documents: fresh } = await api.getDocuments()
+            const updated = fresh?.find(d => d.id === id)
+            if (!updated) { clearInterval(pollInterval); return }
+
+            if (!updated.metadata?.analyzing) {
+              clearInterval(pollInterval)
+              if (updated.metadata?.vision_enriched) {
+                alert('✅ Análise visual concluída! O conteúdo do documento foi enriquecido.')
+              } else {
+                alert('⚠️ A análise visual não pôde ser concluída. Tente novamente em alguns instantes.')
+              }
+              setDocuments(fresh)
+            } else if (Date.now() - started > 180000) {
+              // 3 min sem resposta → desiste
+              clearInterval(pollInterval)
+              setDocuments(d => d.map(x => x.id === id ? { ...x, _analyzing: false } : x))
+              alert('⏱️ A análise está demorando mais que o esperado. Aguarde e recarregue a página.')
+            }
+          } catch { /* ignora erros de polling */ }
+        }, 5000)
+      } else {
+        // Resposta síncrona legada
+        alert(`✅ Análise visual concluída! ${result.chars?.toLocaleString() || 0} caracteres extraídos.`)
+        setDocuments(d => d.map(x => x.id === id ? { ...x, _analyzing: false, metadata: { ...x.metadata, vision_enriched: true } } : x))
+      }
     } catch (err) {
       alert('Erro na análise: ' + err.message)
       setDocuments(d => d.map(x => x.id === id ? { ...x, _analyzing: false } : x))
