@@ -117,6 +117,29 @@ router.post('/models', requireAdmin, async (req, res) => {
   }
 })
 
+// PATCH /knowledge/models/:id - Atualizar categoria (e outros campos) do modelo
+router.patch('/models/:id', requireAdmin, async (req, res) => {
+  try {
+    const { category, name, modelCode } = req.body
+    const updates = {}
+    if (category !== undefined) updates.category = category || null
+    if (name)      updates.name = name
+    if (modelCode) updates.model_code = modelCode
+
+    const { data, error } = await supabaseAdmin
+      .from('equipment_models')
+      .update(updates)
+      .eq('id', req.params.id)
+      .select()
+      .single()
+
+    if (error) throw error
+    res.json({ model: data })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // POST /knowledge/field-issues - Registrar problema de campo
 router.post('/field-issues', requireAuth, async (req, res) => {
   try {

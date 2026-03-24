@@ -370,6 +370,9 @@ export default function Admin() {
   const [issues, setIssues] = useState([])
   const [dashData, setDashData] = useState({})
   const [docFilters, setDocFilters] = useState({ specialtyId: '', technologyId: '', manufacturerId: '' })
+  const [modelFilter, setModelFilter] = useState({ manufacturerId: '' })
+  const [modelsList, setModelsList] = useState([])
+  const [editingModelCategory, setEditingModelCategory] = useState({}) // { [id]: string }
   const [showUpload, setShowUpload] = useState(false)
   const [showCreateUser, setShowCreateUser] = useState(false)
   const [newEmail, setNewEmail] = useState({ email: '', name: '' })
@@ -393,6 +396,28 @@ export default function Admin() {
     if (docFilters.manufacturerId) p.manufacturerId = docFilters.manufacturerId
     api.getDocuments(p).then(r => setDocuments(r.documents || [])).catch(() => {})
   }, [docFilters])
+
+  useEffect(() => {
+    if (tab !== 'models' || !modelFilter.manufacturerId) return
+    api.getModels(modelFilter.manufacturerId).then(r => {
+      setModelsList(r.models || [])
+      setEditingModelCategory({})
+    }).catch(() => {})
+  }, [tab, modelFilter.manufacturerId])
+
+  const saveModelCategory = async (id) => {
+    const category = editingModelCategory[id]
+    if (category === undefined) return
+    try {
+      await api.updateModel(id, { category: category.trim() || null })
+      setModelsList(prev => prev.map(m => m.id === id ? { ...m, category: category.trim() || null } : m))
+      setEditingModelCategory(prev => { const n = { ...prev }; delete n[id]; return n })
+      // Recarrega árvore para refletir a mudança no Dashboard
+      api.getTree().then(r => setTree(r.tree || []))
+    } catch (err) {
+      alert('Erro ao salvar: ' + err.message)
+    }
+  }
 
   const fetchRequests = () => api.getAccessRequests().then(r => setRequests(r.requests || [])).catch(() => {})
   const fetchAuthorizedEmails = () => api.getAuthorizedEmails().then(r => setAuthorizedEmails(r.emails || [])).catch(() => {})
@@ -492,6 +517,7 @@ export default function Admin() {
     { key: 'emails', label: 'Emails Autorizados', icon: '✉️', count: authorizedEmails.length },
     { key: 'users', label: 'Usuários', icon: '👥', count: users.length },
     { key: 'documents', label: 'Documentos', icon: '📄', count: documents.length },
+    { key: 'models', label: 'Modelos', icon: '⚙️' },
     { key: 'refphotos', label: 'Fotos de Referência', icon: '📸' },
     { key: 'gallery', label: 'Galeria', icon: '🖼️', count: 0 },
     { key: 'stats', label: 'Estatísticas', icon: '📊' },
@@ -717,6 +743,79 @@ export default function Admin() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* ─── MODELOS / CATEGORIAS ─── */}
+        {tab === 'models' && (
+          <div>
+            <div style={{ marginBottom: 20 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>Modelos de Equipamento</h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Defina o Tipo de Equipamento para cada modelo. Isso aparece como etapa no fluxo de Nova Consulta.</p>
+            </div>
+
+            {/* Filtro por fabricante */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>Fabricante:</label>
+              <select
+                value={modelFilter.manufacturerId}
+                onChange={e => setModelFilter({ manufacturerId: e.target.value })}
+                style={S.filterSel}
+              >
+                <option value="">Selecione um fabricante...</option>
+                {tree.flatMap(s => s.technologies?.flatMap(t => t.manufacturers || []) || [])
+                  .filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i)
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+
+            {!modelFilter.manufacturerId && (
+              <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Selecione um fabricante para ver os modelos.</p>
+            )}
+
+            {modelFilter.manufacturerId && modelsList.length === 0 && (
+              <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Nenhum modelo cadastrado para este fabricante.</p>
+            )}
+
+            {modelsList.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 700 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, padding: '8px 12px', background: 'var(--bg-card)', borderRadius: 8, fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <span>Modelo</span><span>Tipo de Equipamento</span><span></span>
+                </div>
+                {modelsList.map(m => {
+                  const isEditing = editingModelCategory[m.id] !== undefined
+                  const catValue = isEditing ? editingModelCategory[m.id] : (m.category || '')
+                  return (
+                    <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'center', padding: '10px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}>
+                      <div>
+                        <span style={{ fontWeight: 600, fontSize: 14 }}>{m.name}</span>
+                        {m.model_code && <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>({m.model_code})</span>}
+                      </div>
+                      <div>
+                        <input
+                          value={catValue}
+                          onChange={e => setEditingModelCategory(prev => ({ ...prev, [m.id]: e.target.value }))}
+                          list="model-category-datalist"
+                          placeholder="Sem categoria"
+                          style={{ ...S.filterSel, width: '100%', padding: '6px 10px', fontSize: 13 }}
+                        />
+                        <datalist id="model-category-datalist">
+                          {['Antena/Pedestal','Desativador','Verificador','Etiqueta Rígida','Desacoplador','Câmera','DVR/NVR','Leitor','Controlador','Eletrofecho']
+                            .map(c => <option key={c} value={c} />)}
+                        </datalist>
+                      </div>
+                      <button
+                        onClick={() => saveModelCategory(m.id)}
+                        disabled={!isEditing}
+                        style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: isEditing ? 'var(--primary)' : 'var(--border)', color: isEditing ? '#fff' : 'var(--text-muted)', cursor: isEditing ? 'pointer' : 'default', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        Salvar
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
 

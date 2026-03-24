@@ -49,6 +49,8 @@ export const api = {
   addWhatsappUser: (body) => request('/admin/whatsapp-users', { method: 'POST', body: JSON.stringify(body) }),
   removeWhatsappUser: (id) => request(`/admin/whatsapp-users/${id}`, { method: 'DELETE' }),
   addModel: (body) => request('/knowledge/models', { method: 'POST', body: JSON.stringify(body) }),
+  updateModel: (id, body) => request(`/knowledge/models/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  getModels: (manufacturerId) => request(`/knowledge/models?manufacturerId=${manufacturerId}`),
 
   // Access requests
   getAccessRequests: () => request('/admin/access-requests'),

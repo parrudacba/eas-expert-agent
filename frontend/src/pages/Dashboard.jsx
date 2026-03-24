@@ -59,18 +59,19 @@ export default function Dashboard() {
     if (!mfrModels.length) return []
     const grouped = {}
     mfrModels.forEach(m => {
-      const cat = m.category || 'Outros'
+      const cat = m.category || 'Sem categoria'
       if (!grouped[cat]) grouped[cat] = []
       grouped[cat].push(m)
     })
     return Object.entries(grouped).map(([name, models]) => ({ name, models }))
   })()
-  const hasMultipleCategories = mfrCategories.filter(c => c.name !== 'Outros').length > 1
-  const modelsToShow = hasMultipleCategories
-    ? (selected.category ? mfrCategories.find(c => c.name === selected.category)?.models || [] : [])
-    : mfrModels
+  // Mostra passo de Tipo sempre que o fabricante tem modelos cadastrados
+  const showCategoryStep = mfrModels.length > 0
+  const modelsToShow = selected.category
+    ? (mfrCategories.find(c => c.name === selected.category)?.models || [])
+    : []
 
-  // Pode iniciar: se não há modelos cadastrados basta selecionar fabricante; senão exige modelo
+  // Pode iniciar: sem modelos → basta fabricante; com modelos → exige categoria + modelo
   const canStart = selected.specialty !== null && (
     !selected.manufacturer ||
     mfrModels.length === 0 ||
@@ -212,8 +213,8 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Tipo de equipamento (categorias) — só aparece se fabricante tem múltiplas categorias */}
-              {selected.manufacturer && hasMultipleCategories && (
+              {/* Tipo de equipamento — aparece sempre que fabricante tem modelos categorizados */}
+              {selected.manufacturer && showCategoryStep && (
                 <div style={{ marginBottom: isMobile ? 20 : 32 }}>
                   <h2 style={S.sectionTitle}>Tipo de Equipamento</h2>
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(150px, 1fr))', gap: isMobile ? 8 : 12 }}>
@@ -231,7 +232,7 @@ export default function Dashboard() {
               )}
 
               {/* Modelo */}
-              {selected.manufacturer && mfrModels.length > 0 && (!hasMultipleCategories || selected.category) && (
+              {selected.manufacturer && mfrModels.length > 0 && (!showCategoryStep || selected.category) && (
                 <div style={{ marginBottom: isMobile ? 20 : 32 }}>
                   <h2 style={S.sectionTitle}>Modelo</h2>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? 8 : 10 }}>
