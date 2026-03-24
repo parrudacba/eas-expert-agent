@@ -10,6 +10,7 @@ import adminRoutes from './routes/admin.js'
 import documentRoutes from './routes/documents.js'
 import publicRoutes from './routes/public.js'
 import correctionsRoutes from './routes/corrections.js'
+import referencePhotosRoutes from './routes/referencePhotos.js'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -49,6 +50,7 @@ app.use('/admin', adminRoutes)
 app.use('/documents', documentRoutes)
 app.use('/public', publicRoutes)
 app.use('/corrections', correctionsRoutes)
+app.use('/reference-photos', referencePhotosRoutes)
 
 // 404
 app.use((req, res) => res.status(404).json({ error: 'Rota não encontrada' }))

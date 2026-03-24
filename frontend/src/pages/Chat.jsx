@@ -391,6 +391,60 @@ export default function Chat() {
 
   const canTrain = profile?.permissions?.train_agent || profile?.role === 'admin'
 
+  // ── Voz (Web Speech API) ──────────────────────────────────────────────────
+  const [listening, setListening] = useState(false)
+  const recognitionRef = useRef(null)
+
+  const startVoice = useCallback(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) { alert('Reconhecimento de voz não suportado neste navegador.'); return }
+    if (listening) { recognitionRef.current?.stop(); return }
+    const rec = new SR()
+    rec.lang = 'pt-BR'
+    rec.interimResults = true
+    rec.continuous = false
+    rec.onstart  = () => setListening(true)
+    rec.onend    = () => setListening(false)
+    rec.onerror  = () => setListening(false)
+    rec.onresult = (e) => {
+      const transcript = Array.from(e.results).map(r => r[0].transcript).join('')
+      setInput(transcript)
+    }
+    recognitionRef.current = rec
+    rec.start()
+  }, [listening])
+
+  // ── Foto (câmera / galeria) ───────────────────────────────────────────────
+  const [analyzingPhoto, setAnalyzingPhoto] = useState(false)
+  const photoInputRef = useRef(null)
+
+  const handlePhotoSend = useCallback(async (file) => {
+    if (!file || !sessionId) return
+    setAnalyzingPhoto(true)
+    const userMsg = { role: 'user', content: `📷 Foto enviada${input ? ': ' + input : ''}`, created_at: new Date() }
+    setMessages(m => [...m, userMsg])
+    setInput('')
+    try {
+      const result = await api.analyzePhoto(file, {
+        sessionId,
+        message: input || '',
+        manufacturerId: selectedDoc?.manufacturerId || '',
+        modelId: selectedDoc?.modelId || '',
+        specialtyId: selectedDoc?.specialtyId || ''
+      })
+      setMessages(m => [...m, {
+        role: 'assistant',
+        content: result.response,
+        quickReplies: [],
+        created_at: new Date()
+      }])
+    } catch (err) {
+      setMessages(m => [...m, { role: 'assistant', content: `Erro ao analisar foto: ${err.message}`, created_at: new Date() }])
+    } finally {
+      setAnalyzingPhoto(false)
+    }
+  }, [sessionId, input, selectedDoc])
+
   // ── Renomear sessão ───────────────────────────────────────────────────────
   const handleRename = useCallback(async (id, name) => {
     try {
@@ -917,18 +971,39 @@ export default function Chat() {
             </div>
 
             {/* Input */}
-            <div style={{ ...styles.inputArea, padding: isMobile ? '8px 10px' : '14px 28px', gap: isMobile ? 8 : 12 }}>
+            <div style={{ ...styles.inputArea, padding: isMobile ? '8px 10px' : '14px 28px', gap: isMobile ? 6 : 12, alignItems: 'flex-end' }}>
+              {/* Câmera / foto */}
+              <input ref={photoInputRef} type="file" accept="image/*" capture="environment" hidden
+                onChange={e => { const f = e.target.files?.[0]; if (f) { handlePhotoSend(f); e.target.value = '' } }} />
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                disabled={analyzingPhoto || !sessionId}
+                title="Enviar foto para análise"
+                style={{ ...iconBtnStyle, color: analyzingPhoto ? 'var(--primary)' : 'var(--text-muted)', fontSize: isMobile ? 22 : 20 }}
+              >
+                {analyzingPhoto ? '⏳' : '📷'}
+              </button>
+
+              {/* Voz */}
+              <button
+                onClick={startVoice}
+                title={listening ? 'Parar gravação' : 'Entrada por voz'}
+                style={{ ...iconBtnStyle, color: listening ? '#ef4444' : 'var(--text-muted)', fontSize: isMobile ? 22 : 20, animation: listening ? 'pulse 1s infinite' : 'none' }}
+              >
+                🎤
+              </button>
+
               <textarea
                 ref={inputRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKey}
                 placeholder={isMobile
-                  ? (!selectedDoc ? 'Selecione o equipamento...' : selectedDoc.id === '__history__' ? 'Trocar equipamento →' : 'Digite sua pergunta...')
-                  : inputPlaceholder}
+                  ? (!selectedDoc ? 'Selecione o equipamento...' : selectedDoc.id === '__history__' ? 'Trocar equipamento →' : listening ? '🎤 Ouvindo...' : 'Digite ou use voz/foto...')
+                  : (listening ? '🎤 Ouvindo... fale sua pergunta' : inputPlaceholder)}
                 rows={isMobile ? 2 : 1}
-                disabled={inputDisabled}
-                style={{ ...styles.textarea, opacity: inputDisabled ? 0.5 : 1, fontSize: 16 }}
+                disabled={inputDisabled && !analyzingPhoto}
+                style={{ ...styles.textarea, opacity: (inputDisabled && !analyzingPhoto) ? 0.5 : 1, fontSize: 16, border: listening ? '1.5px solid #ef4444' : undefined }}
               />
               <button
                 onClick={send}
@@ -959,9 +1034,18 @@ export default function Chat() {
         .typing span:nth-child(3) { animation-delay: 0.4s; }
         @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
       `}</style>
     </div>
   )
+}
+
+// ─── Estilo botão ícone (voz / câmera) ───────────────────────────────────────
+const iconBtnStyle = {
+  background: 'none', border: 'none', cursor: 'pointer',
+  padding: '6px', borderRadius: 8, lineHeight: 1, flexShrink: 0,
+  transition: 'opacity 0.2s', minHeight: 44, minWidth: 36,
+  display: 'flex', alignItems: 'center', justifyContent: 'center'
 }
 
 // ─── Estilos: Layout ──────────────────────────────────────────────────────────

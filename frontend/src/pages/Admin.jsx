@@ -311,6 +311,49 @@ function UploadModal({ tree, onClose, onSuccess }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// CARD DE FOTO DE REFERÊNCIA
+// ─────────────────────────────────────────────────────────────
+function RefPhotoCard({ photo, onDelete }) {
+  const [imgUrl, setImgUrl] = useState(null)
+  const [expanded, setExpanded] = useState(false)
+
+  useEffect(() => {
+    api.getReferencePhotoUrl(photo.id).then(r => setImgUrl(r.url)).catch(() => {})
+  }, [photo.id])
+
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+      {imgUrl && (
+        <div style={{ position: 'relative', height: 180, background: '#000', cursor: 'pointer' }} onClick={() => window.open(imgUrl, '_blank')}>
+          <img src={imgUrl} alt={photo.title} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.9 }} />
+          <div style={{ position: 'absolute', bottom: 6, right: 6, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 11, padding: '2px 8px', borderRadius: 10 }}>
+            🔍 Ver
+          </div>
+        </div>
+      )}
+      <div style={{ padding: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+          <div>
+            <p style={{ fontWeight: 600, fontSize: 14 }}>{photo.title}</p>
+            {photo.manufacturers?.name && <span className="badge badge-green" style={{ marginTop: 4 }}>{photo.manufacturers.name}</span>}
+            {photo.equipment_models?.name && <span className="badge badge-blue" style={{ marginTop: 4, marginLeft: 4 }}>{photo.equipment_models.name}</span>}
+          </div>
+          <button onClick={onDelete} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: 16, padding: 2, flexShrink: 0 }}>🗑️</button>
+        </div>
+        {photo.content && (
+          <div style={{ marginTop: 8 }}>
+            <button onClick={() => setExpanded(e => !e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontSize: 12, padding: 0 }}>
+              🤖 {expanded ? 'Ocultar' : 'Ver'} análise IA
+            </button>
+            {expanded && <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.5, maxHeight: 120, overflow: 'auto' }}>{photo.content}</p>}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
 // ADMIN PRINCIPAL
 // ─────────────────────────────────────────────────────────────
 export default function Admin() {
@@ -322,6 +365,8 @@ export default function Admin() {
   const [authorizedEmails, setAuthorizedEmails] = useState([])
   const [users, setUsers] = useState([])
   const [documents, setDocuments] = useState([])
+  const [refPhotos, setRefPhotos] = useState([])
+  const [refPhotoUploading, setRefPhotoUploading] = useState(false)
   const [issues, setIssues] = useState([])
   const [dashData, setDashData] = useState({})
   const [docFilters, setDocFilters] = useState({ specialtyId: '', technologyId: '', manufacturerId: '' })
@@ -336,6 +381,7 @@ export default function Admin() {
     api.getDocuments().then(r => setDocuments(r.documents || [])).catch(() => {})
     api.getUsers().then(r => setUsers(r.users || [])).catch(() => {})
     api.getFieldIssues().then(r => setIssues(r.issues || [])).catch(() => {})
+    api.getReferencePhotos().then(r => setRefPhotos(r.photos || [])).catch(() => {})
     fetchRequests()
     fetchAuthorizedEmails()
   }, [])
@@ -417,6 +463,7 @@ export default function Admin() {
     { key: 'emails', label: 'Emails Autorizados', icon: '✉️', count: authorizedEmails.length },
     { key: 'users', label: 'Usuários', icon: '👥', count: users.length },
     { key: 'documents', label: 'Documentos', icon: '📄', count: documents.length },
+    { key: 'refphotos', label: 'Fotos de Referência', icon: '📸' },
     { key: 'gallery', label: 'Galeria', icon: '🖼️', count: 0 },
     { key: 'stats', label: 'Estatísticas', icon: '📊' },
     { key: 'contribute', label: 'Contribuir', icon: '✏️', count: issues.length },
@@ -641,6 +688,54 @@ export default function Admin() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* ─── FOTOS DE REFERÊNCIA ─── */}
+        {tab === 'refphotos' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <h3 style={{ fontSize: 16, fontWeight: 700 }}>📸 Fotos de Referência</h3>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>Fotos de equipamentos usadas pelo agente para identificar componentes em campo. Apenas usuários com permissão "Treinar Agente".</p>
+              </div>
+              <label style={{ cursor: 'pointer' }}>
+                <input type="file" accept="image/*" hidden onChange={async e => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const titleInput = prompt('Título para esta foto de referência:')
+                  if (!titleInput) return
+                  setRefPhotoUploading(true)
+                  try {
+                    const result = await api.uploadReferencePhoto(file, { title: titleInput })
+                    setRefPhotos(p => [result.photo, ...p])
+                    alert('✅ Foto enviada e analisada com IA Vision!')
+                  } catch (err) { alert('Erro: ' + err.message) }
+                  finally { setRefPhotoUploading(false); e.target.value = '' }
+                }} />
+                <span className="btn btn-primary" style={{ pointerEvents: refPhotoUploading ? 'none' : 'auto', opacity: refPhotoUploading ? 0.6 : 1 }}>
+                  {refPhotoUploading ? '⏳ Analisando...' : '📷 Adicionar Foto'}
+                </span>
+              </label>
+            </div>
+
+            {refPhotos.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)', background: 'var(--bg-card)', borderRadius: 12, border: '2px dashed var(--border)' }}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>📸</div>
+                <p style={{ fontWeight: 500 }}>Nenhuma foto de referência cadastrada</p>
+                <p style={{ fontSize: 13, marginTop: 4 }}>Adicione fotos de equipamentos para o agente reconhecer visualmente em campo</p>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
+                {refPhotos.map(photo => (
+                  <RefPhotoCard key={photo.id} photo={photo} onDelete={async () => {
+                    if (!confirm('Remover esta foto de referência?')) return
+                    await api.deleteReferencePhoto(photo.id)
+                    setRefPhotos(p => p.filter(x => x.id !== photo.id))
+                  }} />
+                ))}
+              </div>
+            )}
           </div>
         )}
 

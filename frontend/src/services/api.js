@@ -65,6 +65,42 @@ export const api = {
   getCorrections: () => request('/corrections'),
   deleteCorrection: (id) => request(`/corrections/${id}`, { method: 'DELETE' }),
 
+  // Photo analysis (field technician photo)
+  analyzePhoto: async (file, body = {}) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const fd = new FormData()
+    fd.append('photo', file)
+    Object.entries(body).forEach(([k, v]) => v != null && fd.append(k, v))
+    const res = await fetch(`${BASE}/chat/analyze-photo`, {
+      method: 'POST',
+      headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+      body: fd
+    })
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Erro na análise') }
+    return res.json()
+  },
+
+  // Reference photos (base de fotos de referência)
+  getReferencePhotos: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([,v]) => v)).toString()
+    return request(`/reference-photos${qs ? '?' + qs : ''}`)
+  },
+  getReferencePhotoUrl: (id) => request(`/reference-photos/${id}/url`),
+  deleteReferencePhoto: (id) => request(`/reference-photos/${id}`, { method: 'DELETE' }),
+  uploadReferencePhoto: async (file, meta) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const fd = new FormData()
+    fd.append('photo', file)
+    Object.entries(meta).forEach(([k, v]) => v != null && fd.append(k, v))
+    const res = await fetch(`${BASE}/reference-photos/upload`, {
+      method: 'POST',
+      headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+      body: fd
+    })
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Erro no upload') }
+    return res.json()
+  },
+
   // Documents
   getDocuments: (params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([,v]) => v)).toString()
