@@ -402,11 +402,8 @@ export default function Chat() {
     const models = manufacturer.equipment_models || []
 
     if (!models.length) {
-      setMessages([{
-        role: 'assistant', isTree: true, created_at: new Date(),
-        content: `Nenhum modelo cadastrado para **${manufacturer.name}**. Consulte o administrador.`,
-        quickReplies: []
-      }])
+      // Sem modelos cadastrados — tenta mostrar documentos do fabricante diretamente
+      buscarDocumentos({ manufacturerId: manufacturer.id }, null)
       return
     }
 
@@ -464,19 +461,6 @@ export default function Chat() {
     }])
   }, [tree, iniciarArvoreCategorias])
 
-  // ── Modelo selecionado via categoria: encerra árvore, ativa RAG ───────────
-  const selecionarModelo = (model, msgUser) => {
-    const welcomeMsg = {
-      role: 'assistant',
-      content: `Modelo selecionado: **${model.name}**\n\nEstou pronto para responder sobre este equipamento com base na documentação disponível. Como posso ajudar?`,
-      quickReplies: QR_INICIAIS.map(label => ({ label })),
-      created_at: new Date()
-    }
-    setMessages(m => [...m, ...(msgUser ? [msgUser] : []), welcomeMsg])
-    setSelectedDoc({ id: '__model__', modelId: model.id, title: model.name, type: 'model' })
-    setTimeout(() => inputRef.current?.focus(), 100)
-  }
-
   // ── Avança na árvore de decisão ───────────────────────────────────────────
   const avancarArvore = useCallback(async (step, item) => {
     const msgUser = { role: 'user', content: item.name || item.title, isTree: true, created_at: new Date() }
@@ -485,7 +469,7 @@ export default function Chat() {
     if (step === 'category') {
       const { name: catName, models } = item
       if (models.length === 1) {
-        selecionarModelo(models[0], msgUser)
+        await buscarDocumentos({ modelId: models[0].id }, msgUser)
       } else {
         setMessages(m => [...m, msgUser, {
           role: 'assistant', isTree: true, created_at: new Date(),
@@ -499,7 +483,7 @@ export default function Chat() {
       return
 
     } else if (step === 'category_model') {
-      selecionarModelo(item, msgUser)
+      await buscarDocumentos({ modelId: item.id }, msgUser)
       return
     }
 
@@ -556,7 +540,7 @@ export default function Chat() {
 
   // ── Busca documentos disponíveis e monta quick replies de documento ────────
   const buscarDocumentos = async (filters, msgUser) => {
-    setMessages(m => [...m, msgUser])
+    setMessages(m => [...m, ...(msgUser ? [msgUser] : [])])
     setLoadingDocs(true)
     try {
       const { documents: docs } = await api.getDocuments(filters)
