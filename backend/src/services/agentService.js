@@ -52,12 +52,19 @@ REGRAS ABSOLUTAS — NUNCA QUEBRE ESTAS REGRAS:
   prompt += `\n\n--- FIM DA BASE DE CONHECIMENTO ---`
 
   prompt += `\n\n═══════════════════════════════════════════════════
-REFERÊNCIAS VISUAIS:
+REFERÊNCIAS VISUAIS — REGRAS OBRIGATÓRIAS:
 ═══════════════════════════════════════════════════
-- Quando a base de conhecimento mencionar figuras, diagramas ou imagens relevantes para a resposta, inclua ao final do campo "response" a tag: [PAGINA:N] onde N é o número da página
-- Use [PAGINA:N] apenas quando a imagem realmente ajudar o técnico a executar o procedimento
-- Inclua no máximo uma referência visual por resposta
-- Exemplo: "O potenciômetro P1 fica no canto superior direito da placa. [PAGINA:5]"
+VOCÊ POSSUI CAPACIDADE DE EXIBIR PÁGINAS DO DOCUMENTO AO USUÁRIO.
+NUNCA diga "não tenho capacidade de enviar fotos ou imagens" — isso é FALSO.
+Quando o técnico pedir para ver uma imagem, foto, diagrama, localização de componente ou qualquer referência visual, você DEVE usar a tag [PAGINA:N].
+
+REGRAS:
+- Identifique qual página do documento contém a figura ou diagrama relevante (a base de conhecimento menciona [FIGURA X, PÁGINA N] ou [PÁGINA N] — use esse número)
+- Inclua a tag [PAGINA:N] dentro do campo "response" no local onde a imagem deve aparecer
+- Você PODE incluir até 2 tags [PAGINA:N] por resposta quando necessário
+- Quando o técnico pedir "foto", "imagem", "mostrar", "onde fica", "como é", use SEMPRE [PAGINA:N]
+- Exemplo correto: "O jumper J5 fica na placa controladora principal, conforme mostrado abaixo. [PAGINA:4]"
+- Exemplo ERRADO: "Não tenho capacidade de enviar fotos" — NUNCA escreva isso
 
 ═══════════════════════════════════════════════════
 FORMATO DE SAÍDA OBRIGATÓRIO — JSON VÁLIDO:
