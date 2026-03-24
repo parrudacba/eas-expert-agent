@@ -430,12 +430,11 @@ export default function Chat() {
   const [sessions, setSessions] = useState([])
   const [sessionsLoaded, setSessionsLoaded] = useState(false)
 
-  // Fabricante resolvido para a sessão atual
-  // undefined = ainda não determinado | null = confirmado sem fabricante | objeto = fabricante
-  const navMfr = location.state?.manufacturer // fabricante do nav state (Dashboard)
-  const [mfgContext, setMfgContext] = useState(
-    location.state !== null && location.state !== undefined ? (navMfr || null) : undefined
-  )
+  // Fabricante para a sessão atual:
+  // ref = valor atual (atualizado de forma síncrona dentro do efeito)
+  // ready = gatilho reativo (boolean) para re-renderizar quando o fabricante for resolvido
+  const mfgContextRef = useRef(null)
+  const [mfgContextReady, setMfgContextReady] = useState(false)
 
   // Correções texto
   const [correcting, setCorrecting] = useState(null)
@@ -549,9 +548,11 @@ export default function Chat() {
   useEffect(() => {
     // Resolve o fabricante para esta sessão a partir do nav state
     if (location.state !== null && location.state !== undefined) {
-      setMfgContext(location.state.manufacturer || null)  // vem do Dashboard
+      mfgContextRef.current = location.state.manufacturer || null  // vem do Dashboard
+      setMfgContextReady(true)
     } else {
-      setMfgContext(undefined)  // aguarda fallback via sessions + tree
+      mfgContextRef.current = null
+      setMfgContextReady(false)  // aguarda fallback via sessions + tree
     }
 
     if (!sessionId) { setMessages([]); setSelectedDoc(null); treeStartedRef.current = false; return }
@@ -572,16 +573,17 @@ export default function Chat() {
 
   // ── Fallback: resolve fabricante a partir das sessões (quando não vem do Dashboard) ─
   useEffect(() => {
-    if (mfgContext !== undefined) return  // já resolvido
+    if (mfgContextReady) return  // já resolvido
     if (!sessionsLoaded || !tree.length || !sessionId) return
     const sess = sessions.find(s => s.id === sessionId)
     if (sess?.manufacturer_id) {
       const mfr = findManufacturerInTree(tree, sess.manufacturer_id)
-      setMfgContext(mfr || null)
+      mfgContextRef.current = mfr || null
     } else {
-      setMfgContext(null)  // sessão sem fabricante → árvore completa
+      mfgContextRef.current = null  // sessão sem fabricante → árvore completa
     }
-  }, [mfgContext, sessionsLoaded, sessions, sessionId, tree])
+    setMfgContextReady(true)
+  }, [mfgContextReady, sessionsLoaded, sessions, sessionId, tree])
 
   // ── Inicia árvore quando sessão nova + árvore pronta ─────────────────────
   useEffect(() => {
@@ -592,12 +594,12 @@ export default function Chat() {
       messages.length === 0 &&
       !selectedDoc &&
       !treeStartedRef.current &&
-      mfgContext !== undefined   // aguarda resolução do fabricante
+      mfgContextReady   // aguarda resolução do fabricante
     ) {
       treeStartedRef.current = true
-      iniciarArvore(mfgContext)
+      iniciarArvore(mfgContextRef.current)
     }
-  }, [sessionId, treeReady, tree, messages.length, selectedDoc, mfgContext])
+  }, [sessionId, treeReady, tree, messages.length, selectedDoc, mfgContextReady])
 
   // ── Scroll automático ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -803,8 +805,8 @@ export default function Chat() {
         treeStartedRef.current = true
         setMessages([])
         setTimeout(() => {
-          if (mfgContext) {
-            iniciarArvoreCategorias(mfgContext)
+          if (mfgContextRef.current) {
+            iniciarArvoreCategorias(mfgContextRef.current)
           } else {
             setMessages([{
               role: 'assistant', isTree: true, created_at: new Date(),
@@ -823,7 +825,7 @@ export default function Chat() {
       // Quick reply real → envia como mensagem do usuário
       await enviarMensagemRef.current?.(qr.label)
     }
-  }, [tree, avancarArvore, mfgContext, iniciarArvoreCategorias])
+  }, [tree, avancarArvore, iniciarArvoreCategorias])
 
   // ── Envio de mensagem ao agente ───────────────────────────────────────────
   const enviarMensagem = async (texto) => {
@@ -870,10 +872,10 @@ export default function Chat() {
   const trocarDocumento = () => {
     setSelectedDoc(null)
     treeStartedRef.current = true
-    if (mfgContext) {
+    if (mfgContextRef.current) {
       // Reinicia árvore de categorias (contexto do Dashboard)
       setMessages(prev => prev.filter(m => !m.isTree))
-      iniciarArvoreCategorias(mfgContext)
+      iniciarArvoreCategorias(mfgContextRef.current)
     } else {
       // Reinicia árvore completa de especialidades
       setMessages(prev => {
