@@ -43,8 +43,11 @@ REGRAS ABSOLUTAS — NUNCA QUEBRE ESTAS REGRAS:
   }
 
   prompt += `\n\n--- BASE DE CONHECIMENTO ---`
+  // Single document selected via decision tree → send full content (up to 80k chars ≈ 20k tokens)
+  // Multiple documents from keyword search → 6k chars each to avoid overflowing context
+  const maxCharsPerDoc = ragContext.length === 1 ? 80000 : 6000
   ragContext.forEach((doc, i) => {
-    prompt += `\n\n[Documento ${i + 1}] ${doc.title}\n${doc.content?.substring(0, 1200)}`
+    prompt += `\n\n[Documento ${i + 1}] ${doc.title}\n${doc.content?.substring(0, maxCharsPerDoc)}`
   })
   prompt += `\n\n--- FIM DA BASE DE CONHECIMENTO ---`
 
