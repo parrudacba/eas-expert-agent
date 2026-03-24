@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { api } from '../services/api.js'
 import { useAuth } from '../contexts/AuthContext.jsx'
+import { useMobile } from '../hooks/useMobile.js'
 
 // ─── Componente: Item de sessão na sidebar (com rename + clear) ───────────────
 function SessionItem({ session, isActive, onClick, onRename, onClear }) {
@@ -349,6 +350,11 @@ export default function Chat() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, profile, signOut } = useAuth()
+  const isMobile = useMobile()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Fecha sidebar mobile ao trocar de sessão
+  useEffect(() => { setSidebarOpen(false) }, [sessionId])
 
   // Dados da árvore de conhecimento
   const [tree, setTree] = useState([])
@@ -770,35 +776,66 @@ export default function Chat() {
 
   const inputDisabled = !selectedDoc || selectedDoc.id === '__history__' || loading
 
+  // ── Sidebar compartilhada (desktop fixa / mobile drawer) ─────────────────
+  const SidebarEl = (
+    <aside style={{
+      ...styles.sidebar,
+      ...(isMobile ? { position: 'fixed', top: 0, left: sidebarOpen ? 0 : -280, height: '100%', zIndex: 300, width: 280, transition: 'left 0.25s ease', boxShadow: sidebarOpen ? '4px 0 20px rgba(0,0,0,0.4)' : 'none' } : {})
+    }}>
+      <div style={styles.sidebarHeader}>
+        {isMobile && (
+          <button onClick={() => setSidebarOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 20, marginRight: 8, cursor: 'pointer' }}>✕</button>
+        )}
+        <button onClick={() => { navigate('/'); setSidebarOpen(false) }} style={styles.backBtn}>← Voltar</button>
+        <h2 style={styles.sidebarTitle}>Conversas</h2>
+      </div>
+      <div style={styles.sessionList}>
+        {sessions.map(s => (
+          <SessionItem
+            key={s.id}
+            session={s}
+            isActive={s.id === sessionId}
+            onClick={() => { navigate(`/chat/${s.id}`); setSidebarOpen(false) }}
+            onRename={(name) => handleRename(s.id, name)}
+            onClear={() => handleClear(s.id)}
+          />
+        ))}
+        {sessions.length === 0 && <p style={styles.emptyList}>Nenhuma conversa ainda</p>}
+      </div>
+      <div style={styles.sidebarFooter}>
+        <div style={styles.avatar}>{user?.email?.[0]?.toUpperCase()}</div>
+        <span style={{ flex: 1, fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email}</span>
+        <button onClick={signOut} style={styles.signOut}>Sair</button>
+      </div>
+    </aside>
+  )
+
   return (
-    <div style={styles.layout}>
-      {/* ── Sidebar ─────────────────────────────────────────────────────── */}
-      <aside style={styles.sidebar}>
-        <div style={styles.sidebarHeader}>
-          <button onClick={() => navigate('/')} style={styles.backBtn}>← Voltar</button>
-          <h2 style={styles.sidebarTitle}>Conversas</h2>
-        </div>
-        <div style={styles.sessionList}>
-          {sessions.map(s => (
-            <SessionItem
-              key={s.id}
-              session={s}
-              isActive={s.id === sessionId}
-              onClick={() => navigate(`/chat/${s.id}`)}
-              onRename={(name) => handleRename(s.id, name)}
-              onClear={() => handleClear(s.id)}
-            />
-          ))}
-          {sessions.length === 0 && <p style={styles.emptyList}>Nenhuma conversa ainda</p>}
-        </div>
-        <div style={styles.sidebarFooter}>
-          <div style={styles.avatar}>{user?.email?.[0]?.toUpperCase()}</div>
-          <button onClick={signOut} style={styles.signOut}>Sair</button>
-        </div>
-      </aside>
+    <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden' }}>
+
+      {/* Sidebar desktop */}
+      {!isMobile && SidebarEl}
+
+      {/* Mobile: overlay + drawer */}
+      {isMobile && sidebarOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 299 }} onClick={() => setSidebarOpen(false)} />
+      )}
+      {isMobile && SidebarEl}
 
       {/* ── Área de chat ────────────────────────────────────────────────── */}
       <div style={styles.chatArea}>
+
+        {/* Mobile top bar */}
+        {isMobile && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--bg-card)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+            <button onClick={() => setSidebarOpen(true)} style={{ background: 'none', border: 'none', color: 'var(--text)', fontSize: 22, lineHeight: 1, cursor: 'pointer', padding: 4 }}>☰</button>
+            <span style={{ flex: 1, fontWeight: 700, fontSize: 15 }}>⚡ EAS Expert</span>
+            {selectedDoc && (
+              <button style={{ ...styles.docBarBtn, fontSize: 11 }} onClick={trocarDocumento}>Trocar</button>
+            )}
+          </div>
+        )}
+
         {!sessionId ? (
           <div style={styles.empty}>
             <span style={{ fontSize: 48 }}>💬</span>
@@ -807,8 +844,8 @@ export default function Chat() {
           </div>
         ) : (
           <>
-            {/* Barra do documento selecionado */}
-            {selectedDoc && (
+            {/* Barra do documento selecionado — desktop only */}
+            {selectedDoc && !isMobile && (
               <div style={styles.docBar}>
                 <span>{selectedDoc.type === 'model' ? '⚙️' : (DOC_ICONS[selectedDoc.type] || '📄')}</span>
                 <span style={styles.docBarTitle}>{selectedDoc.title}</span>
@@ -820,15 +857,21 @@ export default function Chat() {
                 </button>
               </div>
             )}
+            {/* Mobile doc name strip */}
+            {selectedDoc && isMobile && (
+              <div style={{ padding: '6px 12px', background: 'var(--primary-light)', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {DOC_ICONS[selectedDoc.type] || '📄'} {selectedDoc.title}
+              </div>
+            )}
 
             {/* Mensagens — bloqueio de cópia + marca d'água */}
             <div
-              style={{ ...styles.messages, position: 'relative', userSelect: 'none' }}
+              style={{ ...styles.messages, padding: isMobile ? '12px' : '24px 28px', position: 'relative', userSelect: 'none' }}
               onCopy={e => e.preventDefault()}
               onContextMenu={e => e.preventDefault()}
               onDragStart={e => e.preventDefault()}
             >
-              {/* Marca d'água diagonal repetida */}
+              {/* Marca d'água */}
               <div style={wmStyles.container} aria-hidden="true">
                 {Array.from({ length: 18 }).map((_, i) => (
                   <div key={i} style={{ ...wmStyles.text, top: `${(i * 11) % 95}%`, left: `${(i * 17) % 85}%` }}>
@@ -836,8 +879,8 @@ export default function Chat() {
                   </div>
                 ))}
               </div>
-              {/* Conteúdo acima da marca d'água */}
-              <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Conteúdo */}
+              <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: isMobile ? 12 : 16 }}>
               {messages.map((m, i) => (
                 <MessageBubble
                   key={i}
@@ -851,19 +894,15 @@ export default function Chat() {
                 />
               ))}
 
-              {/* Indicador de carregamento de documentos */}
               {loadingDocs && (
                 <div style={{ ...styles.msgWrapper }}>
                   <span style={styles.agentAvatar}>⚡</span>
                   <div style={{ ...styles.bubble, ...styles.bubbleAgent, ...styles.bubbleTree }}>
-                    <p style={{ ...styles.bubbleText, color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                      Buscando documentos...
-                    </p>
+                    <p style={{ ...styles.bubbleText, color: 'var(--text-muted)', fontStyle: 'italic' }}>Buscando documentos...</p>
                   </div>
                 </div>
               )}
 
-              {/* Indicador de digitação do agente */}
               {loading && (
                 <div style={styles.msgWrapper}>
                   <span style={styles.agentAvatar}>⚡</span>
@@ -874,28 +913,30 @@ export default function Chat() {
               )}
 
               <div ref={bottomRef} />
-              </div>{/* fim zIndex content */}
-            </div>{/* fim messages */}
+              </div>
+            </div>
 
             {/* Input */}
-            <div style={styles.inputArea}>
+            <div style={{ ...styles.inputArea, padding: isMobile ? '8px 10px' : '14px 28px', gap: isMobile ? 8 : 12 }}>
               <textarea
                 ref={inputRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKey}
-                placeholder={inputPlaceholder}
-                rows={1}
+                placeholder={isMobile
+                  ? (!selectedDoc ? 'Selecione o equipamento...' : selectedDoc.id === '__history__' ? 'Trocar equipamento →' : 'Digite sua pergunta...')
+                  : inputPlaceholder}
+                rows={isMobile ? 2 : 1}
                 disabled={inputDisabled}
-                style={{ ...styles.textarea, opacity: inputDisabled ? 0.5 : 1 }}
+                style={{ ...styles.textarea, opacity: inputDisabled ? 0.5 : 1, fontSize: 16 }}
               />
               <button
                 onClick={send}
                 disabled={!input.trim() || inputDisabled}
                 className="btn btn-primary"
-                style={styles.sendBtn}
+                style={{ ...styles.sendBtn, padding: isMobile ? '12px 14px' : '10px 20px', fontSize: isMobile ? 18 : 14 }}
               >
-                Enviar →
+                {isMobile ? '➤' : 'Enviar →'}
               </button>
             </div>
           </>
@@ -917,6 +958,7 @@ export default function Chat() {
         .typing span:nth-child(2) { animation-delay: 0.2s; }
         .typing span:nth-child(3) { animation-delay: 0.4s; }
         @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
     </div>
   )
@@ -924,7 +966,7 @@ export default function Chat() {
 
 // ─── Estilos: Layout ──────────────────────────────────────────────────────────
 const styles = {
-  layout:      { display: 'flex', height: '100vh', overflow: 'hidden' },
+  layout:      { display: 'flex', height: '100dvh', overflow: 'hidden' },
   sidebar:     { width: 260, background: 'var(--bg-card)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', flexShrink: 0 },
   sidebarHeader: { padding: '16px', borderBottom: '1px solid var(--border)' },
   backBtn:     { background: 'none', color: 'var(--text-muted)', fontSize: 13, cursor: 'pointer', marginBottom: 8, border: 'none' },
@@ -963,20 +1005,20 @@ const styles = {
   qrTreeGrid: { display: 'flex', flexWrap: 'wrap', gap: 8, paddingLeft: 2 },
   qrTreeBtn:  {
     display: 'flex', alignItems: 'center', gap: 8,
-    padding: '10px 16px', background: 'var(--bg-card)',
+    padding: '12px 16px', background: 'var(--bg-card)',
     border: '2px solid var(--border)', borderRadius: 10,
     fontSize: 14, fontWeight: 500, cursor: 'pointer',
     color: 'var(--text)', transition: 'all 0.15s',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
+    boxShadow: '0 1px 3px rgba(0,0,0,0.06)', minHeight: 48
   },
 
   // Quick replies — chat (chips pequenos)
-  qrChipRow: { display: 'flex', flexWrap: 'wrap', gap: 6, paddingLeft: 2 },
+  qrChipRow: { display: 'flex', flexWrap: 'wrap', gap: 8, paddingLeft: 2 },
   qrChip:    {
-    padding: '6px 14px', background: 'transparent',
+    padding: '10px 16px', background: 'transparent',
     border: '1.5px solid var(--primary)', borderRadius: 20,
-    fontSize: 13, fontWeight: 500, cursor: 'pointer',
-    color: 'var(--primary)', transition: 'all 0.15s'
+    fontSize: 14, fontWeight: 500, cursor: 'pointer',
+    color: 'var(--primary)', transition: 'all 0.15s', minHeight: 44
   },
   qrBadge: {
     fontSize: 11, background: 'var(--primary-light)',
