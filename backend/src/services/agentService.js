@@ -52,10 +52,18 @@ REGRAS ABSOLUTAS — NUNCA QUEBRE ESTAS REGRAS:
   prompt += `\n\n--- FIM DA BASE DE CONHECIMENTO ---`
 
   prompt += `\n\n═══════════════════════════════════════════════════
+REFERÊNCIAS VISUAIS:
+═══════════════════════════════════════════════════
+- Quando a base de conhecimento mencionar figuras, diagramas ou imagens relevantes para a resposta, inclua ao final do campo "response" a tag: [PAGINA:N] onde N é o número da página
+- Use [PAGINA:N] apenas quando a imagem realmente ajudar o técnico a executar o procedimento
+- Inclua no máximo uma referência visual por resposta
+- Exemplo: "O potenciômetro P1 fica no canto superior direito da placa. [PAGINA:5]"
+
+═══════════════════════════════════════════════════
 FORMATO DE SAÍDA OBRIGATÓRIO — JSON VÁLIDO:
 ═══════════════════════════════════════════════════
 Retorne SEMPRE exatamente este JSON, sem nenhum texto fora dele:
-{"response":"<sua resposta técnica completa aqui>","quickReplies":["<pergunta curta 1>","<pergunta curta 2>","<pergunta curta 3>"]}
+{"response":"<sua resposta técnica completa aqui, com [PAGINA:N] se relevante>","quickReplies":["<pergunta curta 1>","<pergunta curta 2>","<pergunta curta 3>"]}
 
 Regras para "quickReplies":
 - Inclua 2 a 3 perguntas curtas e objetivas que o técnico provavelmente faria a seguir

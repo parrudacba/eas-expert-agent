@@ -391,6 +391,18 @@ export default function Admin() {
     setDocuments(d => d.filter(x => x.id !== id))
   }
 
+  const handleAnalyzeDoc = async (id) => {
+    setDocuments(d => d.map(x => x.id === id ? { ...x, _analyzing: true } : x))
+    try {
+      const result = await api.analyzeDocument(id)
+      alert(`✅ Análise visual concluída! ${result.chars?.toLocaleString() || 0} caracteres extraídos.`)
+      setDocuments(d => d.map(x => x.id === id ? { ...x, _analyzing: false, metadata: { ...x.metadata, vision_enriched: true } } : x))
+    } catch (err) {
+      alert('Erro na análise: ' + err.message)
+      setDocuments(d => d.map(x => x.id === id ? { ...x, _analyzing: false } : x))
+    }
+  }
+
   const handleDownload = async (id) => {
     const { url } = await api.getDocumentUrl(id)
     window.open(url, '_blank')
@@ -609,7 +621,20 @@ export default function Admin() {
                     </div>
                     <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>Por {doc.profiles?.full_name || 'sistema'} em {new Date(doc.created_at).toLocaleDateString('pt-BR')}</p>
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {doc.metadata?.vision_enriched && (
+                      <span title="Análise visual ativa" style={{ fontSize: 14 }}>🤖</span>
+                    )}
+                    {doc.file_url?.endsWith('.pdf') && (
+                      <button
+                        onClick={() => handleAnalyzeDoc(doc.id)}
+                        disabled={doc._analyzing}
+                        style={{ ...S.iconBtn, fontSize: 14, opacity: doc._analyzing ? 0.5 : 0.8 }}
+                        title={doc.metadata?.vision_enriched ? 'Re-analisar com Vision' : 'Analisar imagens com IA Vision'}
+                      >
+                        {doc._analyzing ? '⏳' : '👁️'}
+                      </button>
+                    )}
                     <button onClick={() => handleDownload(doc.id)} style={S.iconBtn} title="Download">⬇️</button>
                     <button onClick={() => handleDeleteDoc(doc.id)} style={S.iconBtn} title="Remover">🗑️</button>
                   </div>

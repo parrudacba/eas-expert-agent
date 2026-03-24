@@ -154,6 +154,81 @@ function MarkdownText({ text }) {
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 4, lineHeight: 1.65 }}>{elements}</div>
 }
 
+// ─── Renderizador de páginas PDF via pdfjs-dist ───────────────────────────────
+let pdfjsCache = null
+async function getPdfjs() {
+  if (pdfjsCache) return pdfjsCache
+  const lib = await import('pdfjs-dist')
+  // Worker via CDN — mesma versão do pacote instalado
+  lib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${lib.version}/build/pdf.worker.min.mjs`
+  pdfjsCache = lib
+  return lib
+}
+
+function PdfPageRenderer({ documentId, pageNumber }) {
+  const [imgSrc, setImgSrc] = useState(null)
+  const [status, setStatus] = useState('loading') // loading | ok | error
+  const cancelRef = useRef(false)
+
+  useEffect(() => {
+    cancelRef.current = false
+    setImgSrc(null); setStatus('loading')
+    ;(async () => {
+      try {
+        const { api } = await import('../services/api.js')
+        const { url } = await api.getDocumentUrl(documentId)
+        const pdfjs = await getPdfjs()
+        const pdf = await pdfjs.getDocument(url).promise
+        const pg = Math.min(pageNumber, pdf.numPages)
+        const page = await pdf.getPage(pg)
+        const vp = page.getViewport({ scale: 1.8 })
+        const canvas = document.createElement('canvas')
+        canvas.width = vp.width; canvas.height = vp.height
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise
+        if (!cancelRef.current) { setImgSrc(canvas.toDataURL('image/jpeg', 0.88)); setStatus('ok') }
+      } catch {
+        if (!cancelRef.current) setStatus('error')
+      }
+    })()
+    return () => { cancelRef.current = true }
+  }, [documentId, pageNumber])
+
+  if (status === 'loading') return (
+    <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(0,180,255,0.06)', color: '#7eb3cc', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span> Carregando página {pageNumber}…
+    </div>
+  )
+  if (status === 'error' || !imgSrc) return null
+  return (
+    <div style={{ marginTop: 10, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(0,180,255,0.2)', maxWidth: 640 }}>
+      <div style={{ padding: '4px 10px', background: 'rgba(0,0,0,0.4)', fontSize: 11, color: '#7eb3cc' }}>
+        📄 Página {pageNumber} do documento
+      </div>
+      <img src={imgSrc} style={{ width: '100%', display: 'block' }} alt={`Página ${pageNumber}`} />
+    </div>
+  )
+}
+
+// ─── Renderiza texto com [PAGINA:N] inline ────────────────────────────────────
+function AgentContent({ text, documentId }) {
+  if (!text) return null
+  // Split on [PAGINA:N] tags
+  const parts = text.split(/(\[PAGINA:\d+\])/g)
+  return (
+    <>
+      {parts.map((part, i) => {
+        const m = part.match(/\[PAGINA:(\d+)\]/)
+        if (m) {
+          return documentId
+            ? <PdfPageRenderer key={i} documentId={documentId} pageNumber={parseInt(m[1])} />
+            : null
+        }
+        return part ? <MarkdownText key={i} text={part} /> : null
+      })}
+    </>
+  )
+}
+
 // ─── Quick Replies iniciais ao selecionar um documento ───────────────────────
 const QR_INICIAIS = [
   'Resumo geral do documento',
@@ -213,7 +288,7 @@ function CorrectionModal({ message, onSave, onCancel }) {
 }
 
 // ─── Componente: Bolha de mensagem ────────────────────────────────────────────
-function MessageBubble({ msg, isLast, canTrain, onQuickReply, onCorrect, correctionSaved }) {
+function MessageBubble({ msg, isLast, canTrain, onQuickReply, onCorrect, correctionSaved, documentId }) {
   const isUser = msg.role === 'user'
   const hasQR = isLast && msg.quickReplies?.length > 0
   const isTreeMsg = msg.isTree
@@ -232,7 +307,7 @@ function MessageBubble({ msg, isLast, canTrain, onQuickReply, onCorrect, correct
         }}>
           {isUser
             ? <div style={styles.bubbleText}>{msg.content}</div>
-            : <div style={styles.bubbleText}><MarkdownText text={msg.content} /></div>
+            : <div style={styles.bubbleText}><AgentContent text={msg.content} documentId={documentId} /></div>
           }
         </div>
 
@@ -585,7 +660,7 @@ export default function Chat() {
       created_at: new Date()
     }
     setMessages(m => [...m, ...(msgUser ? [msgUser] : []), welcomeMsg])
-    setSelectedDoc({ id: doc.id, title: doc.title, type: doc.type })
+    setSelectedDoc({ id: doc.id, title: doc.title, type: doc.type, fileUrl: doc.file_url })
     setTimeout(() => inputRef.current?.focus(), 100)
   }
 
@@ -772,6 +847,7 @@ export default function Chat() {
                   onQuickReply={handleQuickReply}
                   onCorrect={() => setCorrecting(i)}
                   correctionSaved={savedCorrections.has(i)}
+                  documentId={selectedDoc?.id}
                 />
               ))}
 

@@ -72,6 +72,7 @@ export const api = {
   },
   getDocumentUrl: (id) => request(`/documents/${id}/url`),
   deleteDocument: (id) => request(`/documents/${id}`, { method: 'DELETE' }),
+  analyzeDocument: (id) => request(`/documents/${id}/analyze`, { method: 'POST' }),
   // Upload direto ao Supabase Storage + processa texto via backend
   uploadDocument: async (file, meta) => {
     const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`

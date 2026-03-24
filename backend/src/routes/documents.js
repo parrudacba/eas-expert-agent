@@ -7,6 +7,45 @@ import { ragService } from '../services/ragService.js'
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
 
+// ── Vision: analisa PDF com Claude para extrair texto + descrições visuais ────
+async function analyzeWithVision(buffer, title) {
+  if (!process.env.ANTHROPIC_API_KEY) return null
+  try {
+    const pdfBase64 = buffer.toString('base64')
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2024-10-22',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 8192,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 }
+            },
+            {
+              type: 'text',
+              text: `Analise COMPLETAMENTE este manual técnico "${title}". Para cada página:\n1. Extraia todo o texto visível\n2. Descreva DETALHADAMENTE cada figura, diagrama, esquema ou foto\n3. Para figuras: [FIGURA X, PÁGINA N]: posição dos componentes, conectores, potenciômetros, DIP switches, pontos de ajuste e seus rótulos\n4. Para tabelas: [TABELA X, PÁGINA N]: conteúdo completo\n5. Para PCBs e esquemas elétricos: descreva cada componente identificável e sua função\n\nUm técnico de campo usará isto para manutenção em campo. Seja extremamente detalhado nas descrições visuais, incluindo posição relativa de cada elemento.`
+            }
+          ]
+        }]
+      })
+    })
+    if (!response.ok) return null
+    const data = await response.json()
+    return data.content?.[0]?.text || null
+  } catch (err) {
+    console.error('Vision analysis error:', err.message)
+    return null
+  }
+}
+
 // Extrair texto de arquivos
 async function extractText(buffer, mimetype, originalname) {
   if (mimetype === 'text/plain') {
@@ -120,13 +159,28 @@ router.post('/process', requireAdmin, async (req, res) => {
     }
     const mimetype = mimeMap[ext] || 'application/octet-stream'
 
-    // 3. Extrair texto com timeout de 20s (se falhar, salva com placeholder)
-    const content = await Promise.race([
-      extractText(buffer, mimetype, filePath),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 20000))
-    ])
-      .then(text => text.substring(0, 200000))
-      .catch(() => `[Documento: ${title} — conteúdo será indexado manualmente]`)
+    // 3. Extrair conteúdo: para PDF usa Claude Vision; outros formatos usam extração de texto
+    let content
+    if (ext === 'pdf') {
+      // Vision: extrai texto + descreve imagens/diagramas (timeout 22s)
+      const visionContent = await Promise.race([
+        analyzeWithVision(buffer, title),
+        new Promise(resolve => setTimeout(() => resolve(null), 22000))
+      ])
+      if (visionContent) {
+        content = visionContent.substring(0, 200000)
+      } else {
+        // Fallback: extração de texto simples
+        content = await extractText(buffer, mimetype, filePath).then(t => t.substring(0, 200000)).catch(() => '')
+      }
+    } else {
+      content = await Promise.race([
+        extractText(buffer, mimetype, filePath),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 20000))
+      ])
+        .then(text => text.substring(0, 200000))
+        .catch(() => `[Documento: ${title} — conteúdo será indexado manualmente]`)
+    }
 
     // 4. Salvar no banco
     const { data: doc, error: dbError } = await supabaseAdmin
@@ -137,7 +191,7 @@ router.post('/process', requireAdmin, async (req, res) => {
         technology_id:      technologyId      || null,
         manufacturer_id:    manufacturerId    || null,
         equipment_model_id: equipmentModelId  || null,
-        metadata: { ext, size: buffer.length },
+        metadata: { ext, size: buffer.length, vision_enriched: ext === 'pdf' && content.length > 500 },
         created_by: req.user.id
       })
       .select()
@@ -145,9 +199,41 @@ router.post('/process', requireAdmin, async (req, res) => {
 
     if (dbError) throw new Error(`DB: ${dbError.message}`)
 
-    res.status(201).json({ document: doc, extracted: content.length > 0 })
+    res.status(201).json({ document: doc, extracted: content.length > 0, visionEnriched: ext === 'pdf' && content.length > 500 })
   } catch (err) {
     console.error('Process error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// POST /documents/:id/analyze — re-analisa documento com Vision (admin)
+router.post('/:id/analyze', requireAdmin, async (req, res) => {
+  try {
+    const { data: doc } = await supabaseAdmin.from('documents').select('file_url, title, metadata').eq('id', req.params.id).single()
+    if (!doc?.file_url) return res.status(404).json({ error: 'Documento não encontrado' })
+
+    const ext = doc.file_url.split('.').pop().toLowerCase()
+    if (ext !== 'pdf') return res.status(400).json({ error: 'Análise visual disponível apenas para PDFs' })
+
+    const { data: fileData, error: downloadError } = await supabaseAdmin.storage.from('documents').download(doc.file_url)
+    if (downloadError) throw new Error(`Download: ${downloadError.message}`)
+
+    const buffer = Buffer.from(await fileData.arrayBuffer())
+
+    const visionContent = await Promise.race([
+      analyzeWithVision(buffer, doc.title),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 22000))
+    ])
+
+    if (!visionContent) return res.status(408).json({ error: 'Timeout na análise visual. Tente novamente.' })
+
+    await supabaseAdmin.from('documents')
+      .update({ content: visionContent.substring(0, 200000), metadata: { ...doc.metadata, vision_enriched: true } })
+      .eq('id', req.params.id)
+
+    res.json({ success: true, chars: visionContent.length })
+  } catch (err) {
+    console.error('Analyze error:', err)
     res.status(500).json({ error: err.message })
   }
 })
