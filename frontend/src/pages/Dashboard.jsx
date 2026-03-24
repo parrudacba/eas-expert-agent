@@ -6,12 +6,31 @@ import { useMobile } from '../hooks/useMobile.js'
 
 const ICONS = { eas: '📡', cftv: '📷', 'controle-acesso': '🔐' }
 const MODE_ICONS = { support: '🔧', training: '🎓' }
+
+// Tipos fixos por especialidade — aparecem independente do cadastro de modelos
+const SPECIALTY_TYPES = {
+  eas: [
+    { name: 'Antena/Pedestal', icon: '📡' },
+    { name: 'Desativador',     icon: '🔓' },
+    { name: 'Verificador',     icon: '🔍' },
+    { name: 'Desacoplador',    icon: '🔌' },
+    { name: 'Etiqueta Rígida', icon: '🏷️' },
+  ],
+  cftv: [
+    { name: 'Câmera',  icon: '📷' },
+    { name: 'DVR/NVR', icon: '🖥️' },
+  ],
+  'controle-acesso': [
+    { name: 'Leitor',      icon: '🔐' },
+    { name: 'Controlador', icon: '⚙️' },
+    { name: 'Eletrofecho', icon: '🔒' },
+  ],
+}
+
 const CATEGORY_ICONS = {
-  'Antena': '📡', 'Pedestal': '🚧', 'Antena/Pedestal': '📡',
-  'Desativador': '🔓', 'Verificador': '🔍',
-  'Etiqueta Rígida': '🏷️', 'Etiqueta': '🏷️',
-  'Desacoplador': '🔌',
-  'Câmera': '📷', 'DVR': '🖥️', 'NVR': '🖥️', 'DVR/NVR': '🖥️',
+  'Antena/Pedestal': '📡', 'Desativador': '🔓', 'Verificador': '🔍',
+  'Etiqueta Rígida': '🏷️', 'Desacoplador': '🔌',
+  'Câmera': '📷', 'DVR/NVR': '🖥️',
   'Leitor': '🔐', 'Controlador': '⚙️', 'Eletrofecho': '🔒',
   'Outros': '📦'
 }
@@ -53,28 +72,33 @@ export default function Dashboard() {
     }
   }
 
-  // Modelos e categorias do fabricante selecionado
+  // Modelos do fabricante selecionado
   const mfrModels = selected.manufacturer?.equipment_models || []
-  const mfrCategories = (() => {
-    if (!mfrModels.length) return []
-    const grouped = {}
-    mfrModels.forEach(m => {
-      const cat = m.category || 'Sem categoria'
-      if (!grouped[cat]) grouped[cat] = []
-      grouped[cat].push(m)
-    })
-    return Object.entries(grouped).map(([name, models]) => ({ name, models }))
-  })()
-  // Mostra passo de Tipo sempre que o fabricante tem modelos cadastrados
-  const showCategoryStep = mfrModels.length > 0
-  const modelsToShow = selected.category
-    ? (mfrCategories.find(c => c.name === selected.category)?.models || [])
+
+  // Lista de tipos para a especialidade atual (fixa, independe do cadastro)
+  const specialtyTypes = selected.specialty
+    ? (SPECIALTY_TYPES[selected.specialty.slug] || [])
     : []
 
-  // Pode iniciar: sem modelos → basta fabricante; com modelos → exige categoria + modelo
+  // Mostra passo de Tipo quando há tipos definidos para a especialidade E há fabricante
+  const showCategoryStep = selected.manufacturer !== null && specialtyTypes.length > 0
+
+  // Para cada tipo, descobre quais modelos estão nessa categoria
+  const categoriesWithModels = specialtyTypes.map(t => ({
+    ...t,
+    models: mfrModels.filter(m => m.category === t.name)
+  }))
+
+  // Modelos do tipo selecionado
+  const modelsToShow = selected.category
+    ? (categoriesWithModels.find(c => c.name === selected.category)?.models || [])
+    : []
+
+  // Pode iniciar: sem tipos definidos → basta fabricante
+  // Com tipos: exige modelo selecionado
   const canStart = selected.specialty !== null && (
     !selected.manufacturer ||
-    mfrModels.length === 0 ||
+    !showCategoryStep ||
     selected.model !== null
   )
 
@@ -213,37 +237,52 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Tipo de equipamento — aparece sempre que fabricante tem modelos categorizados */}
-              {selected.manufacturer && showCategoryStep && (
+              {/* Tipo de Equipamento — lista fixa por especialidade */}
+              {showCategoryStep && (
                 <div style={{ marginBottom: isMobile ? 20 : 32 }}>
                   <h2 style={S.sectionTitle}>Tipo de Equipamento</h2>
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(150px, 1fr))', gap: isMobile ? 8 : 12 }}>
-                    {mfrCategories.map(cat => (
+                    {categoriesWithModels.map(cat => (
                       <button key={cat.name}
                         onClick={() => setSelected(p => ({ ...p, category: cat.name, model: null }))}
-                        style={{ ...S.treeCard, ...(selected.category === cat.name ? S.treeCardActive : {}), padding: isMobile ? '14px 8px' : '18px 12px' }}>
-                        <span style={{ fontSize: isMobile ? 24 : 28 }}>{CATEGORY_ICONS[cat.name] || '📦'}</span>
+                        style={{
+                          ...S.treeCard,
+                          ...(selected.category === cat.name ? S.treeCardActive : {}),
+                          padding: isMobile ? '14px 8px' : '18px 12px',
+                          opacity: cat.models.length === 0 ? 0.55 : 1
+                        }}>
+                        <span style={{ fontSize: isMobile ? 26 : 30 }}>{cat.icon}</span>
                         <span style={{ fontWeight: 600, fontSize: isMobile ? 12 : 13 }}>{cat.name}</span>
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{cat.models.length} modelo{cat.models.length !== 1 ? 's' : ''}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          {cat.models.length > 0
+                            ? `${cat.models.length} modelo${cat.models.length !== 1 ? 's' : ''}`
+                            : 'Sem modelos'}
+                        </span>
                       </button>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Modelo */}
-              {selected.manufacturer && mfrModels.length > 0 && (!showCategoryStep || selected.category) && (
+              {/* Modelo — aparece após selecionar Tipo */}
+              {selected.category && (
                 <div style={{ marginBottom: isMobile ? 20 : 32 }}>
                   <h2 style={S.sectionTitle}>Modelo</h2>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? 8 : 10 }}>
-                    {modelsToShow.map(m => (
-                      <button key={m.id}
-                        onClick={() => setSelected(p => ({ ...p, model: m }))}
-                        style={{ ...S.chip, ...(selected.model?.id === m.id ? S.chipActive : {}), minHeight: 44, padding: isMobile ? '10px 14px' : '8px 16px', fontSize: isMobile ? 13 : 13 }}>
-                        {m.name}{m.model_code ? ` (${m.model_code})` : ''}
-                      </button>
-                    ))}
-                  </div>
+                  {modelsToShow.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? 8 : 10 }}>
+                      {modelsToShow.map(m => (
+                        <button key={m.id}
+                          onClick={() => setSelected(p => ({ ...p, model: m }))}
+                          style={{ ...S.chip, ...(selected.model?.id === m.id ? S.chipActive : {}), minHeight: 44, padding: isMobile ? '10px 14px' : '8px 16px', fontSize: 13 }}>
+                          {m.name}{m.model_code ? ` (${m.model_code})` : ''}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: 13, color: 'var(--text-muted)', padding: '10px 0' }}>
+                      Nenhum modelo cadastrado para este tipo. Acesse o Admin → Modelos para adicionar.
+                    </p>
+                  )}
                 </div>
               )}
             </>
