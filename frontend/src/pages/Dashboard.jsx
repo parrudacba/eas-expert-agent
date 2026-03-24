@@ -6,13 +6,22 @@ import { useMobile } from '../hooks/useMobile.js'
 
 const ICONS = { eas: '📡', cftv: '📷', 'controle-acesso': '🔐' }
 const MODE_ICONS = { support: '🔧', training: '🎓' }
+const CATEGORY_ICONS = {
+  'Antena': '📡', 'Pedestal': '🚧', 'Antena/Pedestal': '📡',
+  'Desativador': '🔓', 'Verificador': '🔍',
+  'Etiqueta Rígida': '🏷️', 'Etiqueta': '🏷️',
+  'Desacoplador': '🔌',
+  'Câmera': '📷', 'DVR': '🖥️', 'NVR': '🖥️', 'DVR/NVR': '🖥️',
+  'Leitor': '🔐', 'Controlador': '⚙️', 'Eletrofecho': '🔒',
+  'Outros': '📦'
+}
 
 export default function Dashboard() {
   const { user, profile, signOut } = useAuth()
   const navigate = useNavigate()
   const isMobile = useMobile()
   const [tree, setTree] = useState([])
-  const [selected, setSelected] = useState({ specialty: null, technology: null, manufacturer: null })
+  const [selected, setSelected] = useState({ specialty: null, technology: null, manufacturer: null, category: null, model: null })
   const [mode, setMode] = useState('support')
   const [loading, setLoading] = useState(true)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -27,20 +36,46 @@ export default function Dashboard() {
   const startChat = async () => {
     try {
       const context = {
-        specialtyId: selected.specialty?.id,
-        technologyId: selected.technology?.id,
-        manufacturerId: selected.manufacturer?.id
+        specialtyId:      selected.specialty?.id,
+        technologyId:     selected.technology?.id,
+        manufacturerId:   selected.manufacturer?.id,
+        equipmentModelId: selected.model?.id
       }
       const { session } = await api.createSession({ mode, context })
       navigate(`/chat/${session.id}`, {
-        state: { manufacturer: selected.manufacturer || null }
+        state: {
+          manufacturer: selected.manufacturer || null,
+          model: selected.model || null
+        }
       })
     } catch (err) {
       alert('Erro ao iniciar sessão: ' + err.message)
     }
   }
 
-  const canStart = selected.specialty !== null
+  // Modelos e categorias do fabricante selecionado
+  const mfrModels = selected.manufacturer?.equipment_models || []
+  const mfrCategories = (() => {
+    if (!mfrModels.length) return []
+    const grouped = {}
+    mfrModels.forEach(m => {
+      const cat = m.category || 'Outros'
+      if (!grouped[cat]) grouped[cat] = []
+      grouped[cat].push(m)
+    })
+    return Object.entries(grouped).map(([name, models]) => ({ name, models }))
+  })()
+  const hasMultipleCategories = mfrCategories.filter(c => c.name !== 'Outros').length > 1
+  const modelsToShow = hasMultipleCategories
+    ? (selected.category ? mfrCategories.find(c => c.name === selected.category)?.models || [] : [])
+    : mfrModels
+
+  // Pode iniciar: se não há modelos cadastrados basta selecionar fabricante; senão exige modelo
+  const canStart = selected.specialty !== null && (
+    !selected.manufacturer ||
+    mfrModels.length === 0 ||
+    selected.model !== null
+  )
 
   // ── Sidebar content (shared between desktop sidebar and mobile drawer) ────
   const SidebarContent = () => (
@@ -136,7 +171,7 @@ export default function Dashboard() {
                 <h2 style={S.sectionTitle}>Especialidade</h2>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(auto-fill, minmax(160px, 1fr))', gap: isMobile ? 8 : 12 }}>
                   {tree.map(s => (
-                    <button key={s.id} onClick={() => setSelected({ specialty: s, technology: null, manufacturer: null })}
+                    <button key={s.id} onClick={() => setSelected({ specialty: s, technology: null, manufacturer: null, category: null, model: null })}
                       style={{ ...S.treeCard, ...(selected.specialty?.id === s.id ? S.treeCardActive : {}), padding: isMobile ? '14px 8px' : '20px 12px' }}>
                       <span style={{ fontSize: isMobile ? 24 : 28 }}>{ICONS[s.slug] || '📋'}</span>
                       <span style={{ fontWeight: 600, fontSize: isMobile ? 12 : 14 }}>{s.name}</span>
@@ -151,7 +186,7 @@ export default function Dashboard() {
                   <h2 style={S.sectionTitle}>Tecnologia</h2>
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(160px, 1fr))', gap: isMobile ? 8 : 12 }}>
                     {selected.specialty.technologies?.map(t => (
-                      <button key={t.id} onClick={() => setSelected(p => ({ ...p, technology: t, manufacturer: null }))}
+                      <button key={t.id} onClick={() => setSelected(p => ({ ...p, technology: t, manufacturer: null, category: null, model: null }))}
                         style={{ ...S.treeCard, ...(selected.technology?.id === t.id ? S.treeCardActive : {}), padding: isMobile ? '14px 8px' : '20px 12px' }}>
                         {t.frequency && <span className="badge badge-blue" style={{ fontSize: 11 }}>{t.frequency}</span>}
                         <span style={{ fontWeight: 600, fontSize: isMobile ? 12 : 14, marginTop: 4 }}>{t.name}</span>
@@ -167,9 +202,44 @@ export default function Dashboard() {
                   <h2 style={S.sectionTitle}>Fabricante</h2>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? 8 : 10 }}>
                     {selected.technology.manufacturers?.map(m => (
-                      <button key={m.id} onClick={() => setSelected(p => ({ ...p, manufacturer: m }))}
+                      <button key={m.id}
+                        onClick={() => setSelected(p => ({ ...p, manufacturer: m, category: null, model: null }))}
                         style={{ ...S.chip, ...(selected.manufacturer?.id === m.id ? S.chipActive : {}), minHeight: 44, padding: isMobile ? '10px 14px' : '8px 16px', fontSize: isMobile ? 14 : 13 }}>
                         {m.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Tipo de equipamento (categorias) — só aparece se fabricante tem múltiplas categorias */}
+              {selected.manufacturer && hasMultipleCategories && (
+                <div style={{ marginBottom: isMobile ? 20 : 32 }}>
+                  <h2 style={S.sectionTitle}>Tipo de Equipamento</h2>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(150px, 1fr))', gap: isMobile ? 8 : 12 }}>
+                    {mfrCategories.map(cat => (
+                      <button key={cat.name}
+                        onClick={() => setSelected(p => ({ ...p, category: cat.name, model: null }))}
+                        style={{ ...S.treeCard, ...(selected.category === cat.name ? S.treeCardActive : {}), padding: isMobile ? '14px 8px' : '18px 12px' }}>
+                        <span style={{ fontSize: isMobile ? 24 : 28 }}>{CATEGORY_ICONS[cat.name] || '📦'}</span>
+                        <span style={{ fontWeight: 600, fontSize: isMobile ? 12 : 13 }}>{cat.name}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{cat.models.length} modelo{cat.models.length !== 1 ? 's' : ''}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Modelo */}
+              {selected.manufacturer && mfrModels.length > 0 && (!hasMultipleCategories || selected.category) && (
+                <div style={{ marginBottom: isMobile ? 20 : 32 }}>
+                  <h2 style={S.sectionTitle}>Modelo</h2>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? 8 : 10 }}>
+                    {modelsToShow.map(m => (
+                      <button key={m.id}
+                        onClick={() => setSelected(p => ({ ...p, model: m }))}
+                        style={{ ...S.chip, ...(selected.model?.id === m.id ? S.chipActive : {}), minHeight: 44, padding: isMobile ? '10px 14px' : '8px 16px', fontSize: isMobile ? 13 : 13 }}>
+                        {m.name}{m.model_code ? ` (${m.model_code})` : ''}
                       </button>
                     ))}
                   </div>
@@ -183,7 +253,7 @@ export default function Dashboard() {
             {selected.specialty && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-dim)', fontSize: 13, flexWrap: 'wrap' }}>
                 <span>📍</span>
-                <span>{[selected.specialty?.name, selected.technology?.name, selected.manufacturer?.name].filter(Boolean).join(' › ')}</span>
+                <span>{[selected.specialty?.name, selected.technology?.name, selected.manufacturer?.name, selected.category, selected.model?.name].filter(Boolean).join(' › ')}</span>
               </div>
             )}
             <button

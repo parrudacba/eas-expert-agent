@@ -561,11 +561,23 @@ export default function Chat() {
 
     if (!sessionId) { setMessages([]); setSelectedDoc(null); treeStartedRef.current = false; return }
     // Reset síncrono: garante que messages = [] ANTES de getHistory retornar
-    // Evita race: se tree init disparar antes do getHistory (sessão anterior também vazia),
-    // o resultado vazio do history não deve apagar a árvore que já foi montada
     setMessages([])
     setSelectedDoc(null)
     treeStartedRef.current = false
+
+    // Modelo pré-selecionado no Dashboard → pula árvore e ativa RAG direto
+    const preModel = location.state?.model
+    if (preModel) {
+      treeStartedRef.current = true  // bloqueia tree init
+      setMessages([{
+        role: 'assistant',
+        content: `⚙️ **${preModel.name}**${preModel.model_code ? ` (${preModel.model_code})` : ''}\n\nEstou pronto para responder com base na documentação deste modelo. Como posso ajudar?`,
+        quickReplies: QR_INICIAIS.map(label => ({ label })),
+        created_at: new Date()
+      }])
+      setSelectedDoc({ id: '__model__', modelId: preModel.id, type: 'model', title: preModel.name })
+      return
+    }
 
     api.getHistory(sessionId).then(r => {
       const hist = r.messages || []
