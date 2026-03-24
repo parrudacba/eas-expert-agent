@@ -194,4 +194,87 @@ router.delete('/authorized-emails/:id', requireAdmin, async (req, res) => {
   res.json({ success: true })
 })
 
+// POST /admin/cleanup — limpa dados órfãos / is_active=false do banco
+router.post('/cleanup', requireAdmin, async (req, res) => {
+  const log = []
+  let errors = 0
+
+  try {
+    // 1. Documentos soft-deleted (is_active = false) → hard-delete com limpeza de storage
+    const { data: deadDocs } = await supabaseAdmin
+      .from('documents')
+      .select('id, file_url')
+      .eq('is_active', false)
+
+    if (deadDocs?.length) {
+      // Remove arquivos do storage em batch
+      const filePaths = deadDocs.map(d => d.file_url).filter(Boolean)
+      if (filePaths.length) {
+        const { error: storageErr } = await supabaseAdmin.storage.from('documents').remove(filePaths)
+        if (storageErr) log.push(`⚠️ Storage parcial: ${storageErr.message}`)
+      }
+      // Hard-delete das linhas
+      await supabaseAdmin.from('documents').delete().eq('is_active', false)
+      log.push(`🗑️ ${deadDocs.length} documento(s) soft-deleted removidos do banco e storage`)
+    } else {
+      log.push('✅ Nenhum documento soft-deleted encontrado')
+    }
+
+    // 2. Sessões de chat sem nenhuma mensagem e criadas há mais de 24h (órfãs)
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    const { data: emptySessions } = await supabaseAdmin
+      .from('chat_sessions')
+      .select('id')
+      .lt('created_at', oneDayAgo)
+
+    if (emptySessions?.length) {
+      // Filtra apenas as que não têm mensagens
+      const ids = emptySessions.map(s => s.id)
+      const { data: withMessages } = await supabaseAdmin
+        .from('chat_messages')
+        .select('session_id')
+        .in('session_id', ids)
+      const withMsgIds = new Set((withMessages || []).map(m => m.session_id))
+      const orphanIds = ids.filter(id => !withMsgIds.has(id))
+
+      if (orphanIds.length) {
+        await supabaseAdmin.from('chat_sessions').delete().in('id', orphanIds)
+        log.push(`🗑️ ${orphanIds.length} sessão(ões) vazia(s) removida(s)`)
+      } else {
+        log.push('✅ Nenhuma sessão órfã encontrada')
+      }
+    } else {
+      log.push('✅ Nenhuma sessão antiga encontrada')
+    }
+
+    // 3. Correções de agente vinculadas a documentos inexistentes
+    const { data: corrections } = await supabaseAdmin
+      .from('agent_corrections')
+      .select('id, document_id')
+      .not('document_id', 'is', null)
+
+    if (corrections?.length) {
+      const docIds = [...new Set(corrections.map(c => c.document_id).filter(Boolean))]
+      const { data: existingDocs } = await supabaseAdmin
+        .from('documents')
+        .select('id')
+        .in('id', docIds)
+      const existingIds = new Set((existingDocs || []).map(d => d.id))
+      const orphanCorrIds = corrections.filter(c => !existingIds.has(c.document_id)).map(c => c.id)
+
+      if (orphanCorrIds.length) {
+        await supabaseAdmin.from('agent_corrections').delete().in('id', orphanCorrIds)
+        log.push(`🗑️ ${orphanCorrIds.length} correção(ões) órfã(s) removida(s)`)
+      } else {
+        log.push('✅ Nenhuma correção órfã encontrada')
+      }
+    }
+
+    res.json({ success: true, log, errors })
+  } catch (err) {
+    console.error('Cleanup error:', err)
+    res.status(500).json({ error: err.message, log })
+  }
+})
+
 export default router

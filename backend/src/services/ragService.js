@@ -19,6 +19,7 @@ export const ragService = {
       let dbQuery = supabaseAdmin
         .from('documents')
         .select('id, title, content, type')
+        .eq('is_active', true)   // nunca busca documentos excluídos
 
       // Aplicar filtros de contexto
       if (filters.specialtyId)    dbQuery = dbQuery.eq('specialty_id', filters.specialtyId)

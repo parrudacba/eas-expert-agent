@@ -316,14 +316,39 @@ router.get('/:id/url', requireAuth, async (req, res) => {
   }
 })
 
-// DELETE /documents/:id
+// DELETE /documents/:id — hard-delete: remove storage + correções vinculadas + linha do banco
 router.delete('/:id', requireAdmin, async (req, res) => {
   try {
-    const { data: doc } = await supabaseAdmin.from('documents').select('file_url').eq('id', req.params.id).single()
-    if (doc?.file_url) {
-      await supabaseAdmin.storage.from('documents').remove([doc.file_url])
+    const { data: doc } = await supabaseAdmin
+      .from('documents')
+      .select('file_url')
+      .eq('id', req.params.id)
+      .single()
+
+    if (!doc) return res.status(404).json({ error: 'Documento não encontrado' })
+
+    // 1. Remove arquivo do storage
+    if (doc.file_url) {
+      await supabaseAdmin.storage.from('documents').remove([doc.file_url]).catch(e =>
+        console.warn('Storage remove warning:', e.message)
+      )
     }
-    await supabaseAdmin.from('documents').update({ is_active: false }).eq('id', req.params.id)
+
+    // 2. Remove correções vinculadas a este documento
+    await supabaseAdmin
+      .from('agent_corrections')
+      .delete()
+      .eq('document_id', req.params.id)
+      .catch(() => {}) // coluna pode não existir — ignora
+
+    // 3. Hard-delete da linha no banco
+    const { error } = await supabaseAdmin
+      .from('documents')
+      .delete()
+      .eq('id', req.params.id)
+
+    if (error) throw error
+
     res.json({ success: true })
   } catch (err) {
     res.status(500).json({ error: err.message })

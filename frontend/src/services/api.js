@@ -48,6 +48,7 @@ export const api = {
   getWhatsappUsers: () => request('/admin/whatsapp-users'),
   addWhatsappUser: (body) => request('/admin/whatsapp-users', { method: 'POST', body: JSON.stringify(body) }),
   removeWhatsappUser: (id) => request(`/admin/whatsapp-users/${id}`, { method: 'DELETE' }),
+  cleanupDatabase: () => request('/admin/cleanup', { method: 'POST' }),
   addModel: (body) => request('/knowledge/models', { method: 'POST', body: JSON.stringify(body) }),
   updateModel: (id, body) => request(`/knowledge/models/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   getModels: (manufacturerId) => request(`/knowledge/models?manufacturerId=${manufacturerId}`),

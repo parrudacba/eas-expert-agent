@@ -3,6 +3,40 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api.js'
 import { useAuth } from '../contexts/AuthContext.jsx'
 
+function CleanupButton() {
+  const [running, setRunning] = useState(false)
+  const [result, setResult] = useState(null)
+
+  const run = async () => {
+    if (!window.confirm('Confirma a limpeza do banco? Esta ação não pode ser desfeita.')) return
+    setRunning(true); setResult(null)
+    try {
+      const r = await api.cleanupDatabase()
+      setResult({ ok: true, log: r.log || [] })
+    } catch (err) {
+      setResult({ ok: false, log: [err.message] })
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <div>
+      <button onClick={run} disabled={running}
+        style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: running ? 'var(--border)' : '#c0392b', color: '#fff', fontWeight: 700, fontSize: 14, cursor: running ? 'default' : 'pointer' }}>
+        {running ? '⏳ Limpando...' : '🧹 Executar Limpeza'}
+      </button>
+      {result && (
+        <div style={{ marginTop: 14, padding: '12px 16px', borderRadius: 8, background: result.ok ? 'rgba(0,200,100,0.08)' : 'rgba(255,80,80,0.08)', border: `1px solid ${result.ok ? 'rgba(0,200,100,0.2)' : 'rgba(255,80,80,0.2)'}` }}>
+          {result.log.map((line, i) => (
+            <div key={i} style={{ fontSize: 13, lineHeight: 1.8, color: 'var(--text)' }}>{line}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const PERMISSIONS = [
   { key: 'train_agent',      label: 'Treinar Agente',         desc: 'Corrigir e treinar respostas do agente' },
   { key: 'chat_support',     label: 'Chat de Suporte',        desc: 'Atendimento via chat técnico' },
@@ -881,7 +915,7 @@ export default function Admin() {
 
         {/* ─── ESTATÍSTICAS ─── */}
         {tab === 'stats' && (
-          <div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, maxWidth: 600 }}>
               {[
                 { label: 'Total de Usuários', value: dashData.totalUsers ?? '—', icon: '👥' },
@@ -895,6 +929,15 @@ export default function Admin() {
                   <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>{s.label}</p>
                 </div>
               ))}
+            </div>
+
+            {/* Limpeza do banco */}
+            <div className="card" style={{ maxWidth: 600, borderColor: 'rgba(255,80,80,0.3)' }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>🧹 Limpeza do Banco de Dados</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+                Remove documentos excluídos (soft-delete), sessões de chat vazias e correções de agente órfãs.
+              </p>
+              <CleanupButton />
             </div>
           </div>
         )}
