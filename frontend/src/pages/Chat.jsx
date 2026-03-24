@@ -61,7 +61,11 @@ function SessionItem({ session, isActive, onClick, onRename, onClear }) {
         ) : (
           <span style={sbStyles.name} title={displayName}>{displayName}</span>
         )}
-        <span style={sbStyles.date}>{new Date(session.created_at).toLocaleDateString('pt-BR')}</span>
+        <span style={sbStyles.date}>
+          {new Date(session.created_at).toLocaleDateString('pt-BR')}
+          {' '}
+          {new Date(session.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+        </span>
       </div>
 
       {(showActions || isActive) && !renaming && (
@@ -556,6 +560,10 @@ export default function Chat() {
     }
 
     if (!sessionId) { setMessages([]); setSelectedDoc(null); treeStartedRef.current = false; return }
+    // Reset síncrono: garante que messages = [] ANTES de getHistory retornar
+    // Evita race: se tree init disparar antes do getHistory (sessão anterior também vazia),
+    // o resultado vazio do history não deve apagar a árvore que já foi montada
+    setMessages([])
     setSelectedDoc(null)
     treeStartedRef.current = false
 
@@ -565,9 +573,8 @@ export default function Chat() {
         // Sessão com histórico: mostra mensagens + permite trocar documento
         setMessages(hist.map(m => ({ ...m, isTree: false })))
         setSelectedDoc({ id: '__history__', title: 'Sessão anterior', type: 'other' })
-      } else {
-        setMessages([])
       }
+      // history vazio: não faz nada — messages já foi limpo de forma síncrona acima
     })
   }, [sessionId])
 
@@ -756,7 +763,7 @@ export default function Chat() {
       if (!docs?.length) {
         setMessages(m => [...m, {
           role: 'assistant', isTree: true, created_at: new Date(),
-          content: 'Não encontrei documentos para este contexto. Consulte o administrador.',
+          content: '⚠️ Nenhum documento cadastrado para este item.\n\nConsulte o administrador para adicionar o material correspondente.',
           quickReplies: [{ label: '↩ Recomeçar', treeAction: { step: 'restart', item: null } }]
         }])
       } else if (docs.length === 1) {
