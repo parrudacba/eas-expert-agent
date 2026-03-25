@@ -35,14 +35,11 @@ export function AuthProvider({ children }) {
   }
 
   // Enviar OTP para verificação de dispositivo
-  // emailRedirectTo aciona o template customizado (AbacusAI) que inclui magic link + código numérico
+  // Usa o mesmo padrão do sendOtp que aciona o template customizado (magic link + código numérico)
   const sendDeviceOtp = async (email) => {
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: {
-        shouldCreateUser: false,
-        emailRedirectTo: `${window.location.origin}/login`
-      }
+      options: { emailRedirectTo: window.location.origin }
     })
     if (error) throw error
   }
