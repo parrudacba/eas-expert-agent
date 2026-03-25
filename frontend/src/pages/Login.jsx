@@ -151,7 +151,7 @@ function ParticlesBackground() {
 
 // ─── Componente principal ──────────────────────────────────────
 export default function Login() {
-  const { user, signInWithPassword, sendOtp, verifyOtp, updatePassword, sendDeviceOtp, signOut } = useAuth();
+  const { user, signInWithPassword, sendOtp, verifyOtp, updatePassword, sendDeviceOtp, getProfile, signOut } = useAuth();
   const navigate = useNavigate();
 
   // mode: "login" | "signup" | "request-access" | "forgot-password" | "reset-password"
@@ -253,6 +253,15 @@ export default function Login() {
     checkingDeviceRef.current = true; // bloqueia redirect do useEffect durante a verificação
     try {
       const { user: loggedUser } = await signInWithPassword(cleanEmail, password);
+      if (loggedUser) {
+        const profileData = await getProfile(loggedUser.id);
+        const isAdmin = profileData?.role === 'admin' || profileData?.permissions?.admin_panel;
+        if (isAdmin) {
+          checkingDeviceRef.current = false;
+          navigate('/');
+          return;
+        }
+      }
       if (loggedUser && !isDeviceTrusted(loggedUser.id)) {
         const userId = loggedUser.id;
         // Logout imediato — impede bypass via refresh de página

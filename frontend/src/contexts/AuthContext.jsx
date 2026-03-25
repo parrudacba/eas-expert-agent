@@ -27,6 +27,12 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Busca perfil diretamente pelo userId (usado no handleLogin antes do state sincronizar)
+  const getProfile = async (userId) => {
+    const { data } = await supabase.from('profiles').select('role, permissions').eq('id', userId).single()
+    return data
+  }
+
   // Login com email + senha — retorna { user, session }
   const signInWithPassword = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
@@ -90,6 +96,7 @@ export function AuthProvider({ children }) {
       updatePassword,
       signInWithEmail,
       sendDeviceOtp,
+      getProfile,
       signOut
     }}>
       {children}
