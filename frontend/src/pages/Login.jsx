@@ -246,28 +246,31 @@ export default function Login() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
+    // Normaliza email: remove espaços e ponto final (autocomplete do browser pode adicionar)
+    const cleanEmail = email.trim().replace(/\.+$/, '');
+    if (cleanEmail !== email) setEmail(cleanEmail);
     setLoading(true);
     checkingDeviceRef.current = true; // bloqueia redirect do useEffect durante a verificação
     try {
-      const { user: loggedUser } = await signInWithPassword(email, password);
+      const { user: loggedUser } = await signInWithPassword(cleanEmail, password);
       if (loggedUser && !isDeviceTrusted(loggedUser.id)) {
         const userId = loggedUser.id;
         // Logout imediato — impede bypass via refresh de página
         await signOut();
-        setPendingEmail(email);
+        setPendingEmail(cleanEmail);
         setPendingUserId(userId);
         // Salva userId para o Dashboard confiar o dispositivo ao chegar via link
         localStorage.setItem('eas_pending_device', userId);
         // Mostra a tela de verificação ANTES de tentar enviar o email
         setMode("verify-device");
-        const remaining = getOtpCooldownRemaining(email);
+        const remaining = getOtpCooldownRemaining(cleanEmail);
         if (remaining > 0) {
           setResendCooldown(remaining);
           const t = setInterval(() => setResendCooldown(v => { if (v <= 1) { clearInterval(t); return 0; } return v - 1; }), 1000);
         } else {
           // Fire-and-forget — falha no envio não bloqueia a tela
-          sendDeviceOtp(email)
-            .then(() => { markOtpSent(email); startResendCooldown(); })
+          sendDeviceOtp(cleanEmail)
+            .then(() => { markOtpSent(cleanEmail); startResendCooldown(); })
             .catch(() => { /* rate limit ou outro erro — usuário pode usar reenviar */ });
         }
       } else {
@@ -642,7 +645,7 @@ export default function Login() {
                       Email <span className="text-cyan-400">*</span>
                     </label>
                     <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                      placeholder="seu@email.com" required className={inputClass} />
+                      placeholder="seu@email.com" required autoComplete="email" autoCorrect="off" autoCapitalize="off" spellCheck={false} className={inputClass} />
                   </div>
 
                   <div>
@@ -913,7 +916,7 @@ export default function Login() {
                     <div>
                       <label className="block text-sm font-medium text-slate-300 mb-1">Email</label>
                       <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                        placeholder="seu@email.com" required className={inputClass} />
+                        placeholder="seu@email.com" required autoComplete="email" autoCorrect="off" autoCapitalize="off" spellCheck={false} className={inputClass} />
                     </div>
 
                     <div>
