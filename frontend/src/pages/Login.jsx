@@ -43,6 +43,23 @@ function trustDevice(userId) {
   } catch {}
 }
 
+// Controle de rate limit local — evita chamar sendDeviceOtp se email foi enviado há < 60s
+const OTP_COOLDOWN_MS = 60_000
+function getOtpCooldownRemaining(email) {
+  try {
+    const t = JSON.parse(localStorage.getItem('eas_otp_sent') || '{}')
+    const remaining = OTP_COOLDOWN_MS - (Date.now() - (t[email] || 0))
+    return remaining > 0 ? Math.ceil(remaining / 1000) : 0
+  } catch { return 0 }
+}
+function markOtpSent(email) {
+  try {
+    const t = JSON.parse(localStorage.getItem('eas_otp_sent') || '{}')
+    t[email] = Date.now()
+    localStorage.setItem('eas_otp_sent', JSON.stringify(t))
+  } catch {}
+}
+
 // ─── Validação de CPF ─────────────────────────────────────────
 function validateCPF(cpf) {
   const cleaned = cpf.replace(/\D/g, '');
@@ -236,8 +253,16 @@ export default function Login() {
       if (loggedUser && !isDeviceTrusted(loggedUser.id)) {
         setPendingEmail(email);
         setPendingUserId(loggedUser.id);
-        await sendDeviceOtp(email);
-        startResendCooldown();
+        const remaining = getOtpCooldownRemaining(email);
+        if (remaining > 0) {
+          // Email já enviado recentemente — apenas mostra a tela com o cooldown restante
+          setResendCooldown(remaining);
+          const t = setInterval(() => setResendCooldown(v => { if (v <= 1) { clearInterval(t); return 0; } return v - 1; }), 1000);
+        } else {
+          await sendDeviceOtp(email);
+          markOtpSent(email);
+          startResendCooldown();
+        }
         setMode("verify-device");
       } else {
         checkingDeviceRef.current = false;
@@ -277,6 +302,7 @@ export default function Login() {
     setLoading(true);
     try {
       await sendDeviceOtp(pendingEmail);
+      markOtpSent(pendingEmail);
       startResendCooldown();
       setCodeDigits(['', '', '', '', '', '']);
       setTimeout(() => digitRefs[0].current?.focus(), 50);
