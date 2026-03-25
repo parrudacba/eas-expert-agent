@@ -151,7 +151,7 @@ function ParticlesBackground() {
 
 // ─── Componente principal ──────────────────────────────────────
 export default function Login() {
-  const { user, signInWithPassword, sendOtp, verifyOtp, updatePassword, sendDeviceOtp, getProfile, signOut } = useAuth();
+  const { user, loading: authLoading, signInWithPassword, sendOtp, verifyOtp, updatePassword, sendDeviceOtp, getProfile, signOut } = useAuth();
   const navigate = useNavigate();
 
   // mode: "login" | "signup" | "request-access" | "forgot-password" | "reset-password"
@@ -184,16 +184,14 @@ export default function Login() {
   const d0 = useRef(null), d1 = useRef(null), d2 = useRef(null);
   const d3 = useRef(null), d4 = useRef(null), d5 = useRef(null);
   const digitRefs = [d0, d1, d2, d3, d4, d5];
-  // Ref síncrono: impede redirect automático enquanto handleLogin processa o dispositivo
-  const checkingDeviceRef = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Redireciona quando user é setado via magic link (clique no email) ou sessão existente
-  // checkingDeviceRef bloqueia esse redirect durante o handleLogin normal
+  // Redireciona apenas na carga inicial (authLoading true→false)
+  // Não interfere com o fluxo assíncrono do handleLogin
   useEffect(() => {
-    if (user && !checkingDeviceRef.current) navigate('/');
-  }, [user]);
+    if (!authLoading && user) navigate('/');
+  }, [authLoading]);
 
   const startResendCooldown = (seconds = 60) => {
     setResendCooldown(seconds);
@@ -250,14 +248,12 @@ export default function Login() {
     const cleanEmail = email.trim().replace(/\.+$/, '');
     if (cleanEmail !== email) setEmail(cleanEmail);
     setLoading(true);
-    checkingDeviceRef.current = true; // bloqueia redirect do useEffect durante a verificação
     try {
       const { user: loggedUser } = await signInWithPassword(cleanEmail, password);
       if (loggedUser) {
         const profileData = await getProfile(loggedUser.id);
         const isAdmin = profileData?.role === 'admin' || profileData?.permissions?.admin_panel;
         if (isAdmin) {
-          checkingDeviceRef.current = false;
           navigate('/');
           return;
         }
@@ -294,11 +290,9 @@ export default function Login() {
           }
         }
       } else {
-        checkingDeviceRef.current = false;
         navigate("/");
       }
     } catch (err) {
-      checkingDeviceRef.current = false;
       setError(err.message || "Email ou senha incorretos.");
     } finally {
       setLoading(false);
