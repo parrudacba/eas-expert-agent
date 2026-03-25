@@ -252,31 +252,22 @@ export default function Login() {
       const { user: loggedUser } = await signInWithPassword(email, password);
       if (loggedUser && !isDeviceTrusted(loggedUser.id)) {
         const userId = loggedUser.id;
-        // Faz logout imediato — impede acesso ao dashboard se o usuário atualizar a página
+        // Logout imediato — impede bypass via refresh de página
         await signOut();
         setPendingEmail(email);
         setPendingUserId(userId);
+        // Mostra a tela de verificação ANTES de tentar enviar o email
+        setMode("verify-device");
         const remaining = getOtpCooldownRemaining(email);
         if (remaining > 0) {
-          // Email enviado recentemente — mostra tela com cooldown restante sem chamar Supabase
           setResendCooldown(remaining);
           const t = setInterval(() => setResendCooldown(v => { if (v <= 1) { clearInterval(t); return 0; } return v - 1; }), 1000);
         } else {
-          try {
-            await sendDeviceOtp(email);
-            markOtpSent(email);
-            startResendCooldown();
-          } catch (err) {
-            // Rate limit do Supabase — mostra tela assim mesmo (código pode ter chegado antes)
-            if (err.message?.toLowerCase().includes('rate limit') || err.status === 429) {
-              const t2 = setInterval(() => setResendCooldown(v => { if (v <= 1) { clearInterval(t2); return 0; } return v - 1; }), 1000);
-              setResendCooldown(180);
-            } else {
-              throw err;
-            }
-          }
+          // Fire-and-forget — falha no envio não bloqueia a tela
+          sendDeviceOtp(email)
+            .then(() => { markOtpSent(email); startResendCooldown(); })
+            .catch(() => { /* rate limit ou outro erro — usuário pode usar reenviar */ });
         }
-        setMode("verify-device");
       } else {
         checkingDeviceRef.current = false;
         navigate("/");
