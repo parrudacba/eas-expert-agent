@@ -69,6 +69,18 @@ export default function Dashboard() {
 
   useEffect(() => { setMenuOpen(false) }, [])
 
+  // Confia o dispositivo quando usuário chega via magic link de verificação
+  useEffect(() => {
+    if (!user?.id) return
+    const pending = localStorage.getItem('eas_pending_device')
+    if (pending === user.id) {
+      const trusted = JSON.parse(localStorage.getItem('eas_trusted_devices') || '{}')
+      trusted[user.id] = Date.now() + 90 * 24 * 60 * 60 * 1000
+      localStorage.setItem('eas_trusted_devices', JSON.stringify(trusted))
+      localStorage.removeItem('eas_pending_device')
+    }
+  }, [user?.id])
+
   const startChat = async () => {
     try {
       const context = {

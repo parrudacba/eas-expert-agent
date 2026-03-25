@@ -256,6 +256,8 @@ export default function Login() {
         await signOut();
         setPendingEmail(email);
         setPendingUserId(userId);
+        // Salva userId para o Dashboard confiar o dispositivo ao chegar via link
+        localStorage.setItem('eas_pending_device', userId);
         // Mostra a tela de verificação ANTES de tentar enviar o email
         setMode("verify-device");
         const remaining = getOtpCooldownRemaining(email);
@@ -538,99 +540,73 @@ export default function Login() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
+                className="text-center"
               >
-                {/* Ícone + título */}
-                <div className="text-center mb-6">
-                  <motion.div
-                    className="w-16 h-16 bg-gradient-to-br from-cyan-600 to-blue-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-[0_0_30px_rgba(0,212,255,0.3)]"
-                    animate={{ boxShadow: ["0 0 20px rgba(0,212,255,0.3)", "0 0 40px rgba(0,212,255,0.5)", "0 0 20px rgba(0,212,255,0.3)"] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                  >
-                    <Shield className="w-8 h-8 text-white" />
-                  </motion.div>
-                  <h2 className="text-xl font-bold text-white mb-1">Verificação de Dispositivo</h2>
-                  <p className="text-slate-400 text-sm">
-                    Detectamos um novo acesso de: <span className="text-white font-medium">{getDeviceInfo()}</span>
-                  </p>
-                </div>
+                {/* Ícone animado */}
+                <motion.div
+                  className="w-16 h-16 bg-gradient-to-br from-cyan-600 to-blue-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-[0_0_30px_rgba(0,212,255,0.3)]"
+                  animate={{ boxShadow: ["0 0 20px rgba(0,212,255,0.3)", "0 0 40px rgba(0,212,255,0.5)", "0 0 20px rgba(0,212,255,0.3)"] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                >
+                  <Shield className="w-8 h-8 text-white" />
+                </motion.div>
 
-                {/* Info do código enviado */}
-                <div className="bg-cyan-950/50 border border-cyan-500/30 rounded-xl p-4 mb-6">
+                <h2 className="text-xl font-bold text-white mb-1">Verificação de Dispositivo</h2>
+                <p className="text-slate-400 text-sm mb-6">
+                  Detectamos um novo acesso de: <span className="text-white font-medium">{getDeviceInfo()}</span>
+                </p>
+
+                {/* Instrução */}
+                <div className="bg-cyan-950/50 border border-cyan-500/30 rounded-xl p-5 mb-6 text-left">
                   <div className="flex items-start gap-3">
                     <Mail className="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" />
-                    <p className="text-sm text-cyan-200/80">
-                      Enviamos um código de 6 dígitos para <strong className="text-white">{pendingEmail}</strong>
-                    </p>
+                    <div>
+                      <p className="text-sm text-cyan-200/90 leading-relaxed">
+                        Enviamos um <strong className="text-white">link de verificação</strong> para{' '}
+                        <strong className="text-white">{pendingEmail}</strong>.
+                      </p>
+                      <p className="text-sm text-slate-400 mt-1">
+                        Abra o email e clique no link para confirmar o acesso neste dispositivo.
+                      </p>
+                    </div>
                   </div>
                 </div>
 
-                <form onSubmit={handleVerifyDevice} className="space-y-5">
-                  {/* 6 caixas de dígito */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-3 text-center">
-                      Digite o código recebido
-                    </label>
-                    <div className="flex gap-2 justify-center">
-                      {codeDigits.map((digit, i) => (
-                        <input
-                          key={i}
-                          ref={digitRefs[i]}
-                          type="text"
-                          inputMode="numeric"
-                          maxLength={1}
-                          value={digit}
-                          onChange={e => handleDigitInput(i, e.target.value)}
-                          onKeyDown={e => handleDigitKeyDown(i, e)}
-                          onPaste={handleDigitPaste}
-                          autoFocus={i === 0}
-                          className={`w-11 h-14 text-center text-2xl font-bold rounded-xl border-2 bg-slate-900/70 text-white outline-none transition-all
-                            ${digit
-                              ? 'border-cyan-500 bg-cyan-950/40 shadow-[0_0_12px_rgba(0,212,255,0.25)]'
-                              : 'border-slate-700 focus:border-cyan-500 focus:shadow-[0_0_12px_rgba(0,212,255,0.2)]'
-                            }`}
-                        />
-                      ))}
-                    </div>
-                  </div>
+                {/* Dica visual de espera */}
+                <div className="flex items-center justify-center gap-2 mb-6">
+                  <motion.div className="w-2 h-2 rounded-full bg-cyan-500"
+                    animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.2, repeat: Infinity, delay: 0 }} />
+                  <motion.div className="w-2 h-2 rounded-full bg-cyan-500"
+                    animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.2, repeat: Infinity, delay: 0.4 }} />
+                  <motion.div className="w-2 h-2 rounded-full bg-cyan-500"
+                    animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.2, repeat: Infinity, delay: 0.8 }} />
+                  <span className="text-slate-500 text-sm ml-1">Aguardando verificação...</span>
+                </div>
 
-                  {error && (
-                    <div className="bg-red-950/50 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl text-sm text-center">
-                      {error}
-                    </div>
+                {error && (
+                  <div className="bg-red-950/50 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl text-sm mb-4">
+                    {error}
+                  </div>
+                )}
+
+                {/* Reenviar */}
+                <div className="mb-4">
+                  {resendCooldown > 0 ? (
+                    <p className="text-slate-500 text-sm">Reenviar link em {resendCooldown}s</p>
+                  ) : (
+                    <button type="button" onClick={handleResendDeviceCode} disabled={loading}
+                      className="text-cyan-400 hover:text-cyan-300 text-sm font-medium transition-colors flex items-center gap-1 mx-auto">
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      Reenviar link de verificação
+                    </button>
                   )}
+                </div>
 
-                  <motion.button
-                    type="submit"
-                    disabled={loading || codeDigits.join('').length < 6}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:from-slate-600 disabled:to-slate-600 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(0,212,255,0.3)]"
-                  >
-                    {loading
-                      ? <><Loader2 className="w-5 h-5 animate-spin" /> Verificando...</>
-                      : <><CheckCircle className="w-5 h-5" /> Verificar Código</>
-                    }
-                  </motion.button>
-
-                  {/* Reenviar */}
-                  <div className="text-center">
-                    <span className="text-slate-500 text-sm">Não recebeu o código? </span>
-                    {resendCooldown > 0 ? (
-                      <span className="text-slate-500 text-sm">Reenviar em {resendCooldown}s</span>
-                    ) : (
-                      <button type="button" onClick={handleResendDeviceCode}
-                        className="text-cyan-400 hover:text-cyan-300 text-sm font-medium transition-colors">
-                        Reenviar código
-                      </button>
-                    )}
-                  </div>
-
-                  <button type="button"
-                    onClick={() => { setMode("login"); setError(""); setCodeDigits(['','','','','','']); }}
-                    className="w-full text-slate-400 hover:text-slate-300 font-medium py-2 transition-colors flex items-center justify-center gap-1 text-sm">
-                    <ArrowLeft className="w-4 h-4" /> Voltar para o login
-                  </button>
-                </form>
+                <button type="button"
+                  onClick={() => { setMode("login"); setError(""); }}
+                  className="w-full text-slate-400 hover:text-slate-300 font-medium py-2 transition-colors flex items-center justify-center gap-1 text-sm">
+                  <ArrowLeft className="w-4 h-4" /> Voltar para o login
+                </button>
               </motion.div>
             )}
 
