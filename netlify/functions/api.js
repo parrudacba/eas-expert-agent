@@ -9,6 +9,7 @@ import chatRoutes from '../../backend/src/routes/chat.js'
 import knowledgeRoutes from '../../backend/src/routes/knowledge.js'
 import adminRoutes from '../../backend/src/routes/admin.js'
 import documentRoutes from '../../backend/src/routes/documents.js'
+import publicRoutes from '../../backend/src/routes/public.js'
 
 const app = express()
 
@@ -31,6 +32,7 @@ app.use('/api/chat', chatLimiter, chatRoutes)
 app.use('/api/knowledge', knowledgeRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/documents', documentRoutes)
+app.use('/api/public', publicRoutes)
 
 app.use((req, res) => res.status(404).json({ error: 'Rota não encontrada' }))
 
