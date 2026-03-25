@@ -134,7 +134,7 @@ function ParticlesBackground() {
 
 // ─── Componente principal ──────────────────────────────────────
 export default function Login() {
-  const { signInWithPassword, sendOtp, verifyOtp, updatePassword, sendDeviceOtp } = useAuth();
+  const { user, signInWithPassword, sendOtp, verifyOtp, updatePassword, sendDeviceOtp } = useAuth();
   const navigate = useNavigate();
 
   // mode: "login" | "signup" | "request-access" | "forgot-password" | "reset-password"
@@ -169,6 +169,11 @@ export default function Login() {
   const digitRefs = [d0, d1, d2, d3, d4, d5];
 
   useEffect(() => { setMounted(true); }, []);
+
+  // Se usuário autenticou via magic link (clicou no email), redireciona direto
+  useEffect(() => {
+    if (user && mode !== 'verify-device') navigate('/');
+  }, [user]);
 
   const startResendCooldown = () => {
     setResendCooldown(60);
