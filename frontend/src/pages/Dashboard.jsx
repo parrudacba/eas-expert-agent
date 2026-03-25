@@ -95,11 +95,11 @@ export default function Dashboard() {
     : []
 
   // Pode iniciar: sem tipos definidos → basta fabricante
-  // Com tipos: exige modelo selecionado
+  // Com tipos: exige tipo + nome de modelo digitado (não vazio)
   const canStart = selected.specialty !== null && (
     !selected.manufacturer ||
     !showCategoryStep ||
-    selected.model !== null
+    (selected.category !== null && selected.model?.name?.trim())
   )
 
   // ── Sidebar content (shared between desktop sidebar and mobile drawer) ────
@@ -264,23 +264,54 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Modelo — aparece após selecionar Tipo */}
+              {/* Modelo — campo de texto livre após selecionar Tipo */}
               {selected.category && (
                 <div style={{ marginBottom: isMobile ? 20 : 32 }}>
                   <h2 style={S.sectionTitle}>Modelo</h2>
-                  {modelsToShow.length > 0 ? (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? 8 : 10 }}>
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>
+                    Digite o nome do modelo que você vai consultar:
+                  </p>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', maxWidth: 480 }}>
+                    <input
+                      type="text"
+                      value={selected.model?.name || ''}
+                      onChange={e => setSelected(p => ({
+                        ...p,
+                        model: e.target.value.trim() ? { name: e.target.value, id: null } : null
+                      }))}
+                      placeholder={`Ex: Ultra 1.8, Ultra Post 6, ADS4...`}
+                      style={{
+                        flex: 1,
+                        padding: isMobile ? '13px 14px' : '12px 16px',
+                        borderRadius: 10,
+                        border: `2px solid ${selected.model?.name ? 'var(--primary)' : 'var(--border)'}`,
+                        background: 'var(--bg-card)',
+                        color: 'var(--text)',
+                        fontSize: 14,
+                        outline: 'none',
+                        transition: 'border-color 0.2s'
+                      }}
+                      autoComplete="off"
+                      list="model-suggestions"
+                    />
+                    {/* Autocomplete com modelos já cadastrados para este tipo */}
+                    <datalist id="model-suggestions">
                       {modelsToShow.map(m => (
-                        <button key={m.id}
-                          onClick={() => setSelected(p => ({ ...p, model: m }))}
-                          style={{ ...S.chip, ...(selected.model?.id === m.id ? S.chipActive : {}), minHeight: 44, padding: isMobile ? '10px 14px' : '8px 16px', fontSize: 13 }}>
-                          {m.name}{m.model_code ? ` (${m.model_code})` : ''}
-                        </button>
+                        <option key={m.id} value={m.name} />
                       ))}
-                    </div>
-                  ) : (
-                    <p style={{ fontSize: 13, color: 'var(--text-muted)', padding: '10px 0' }}>
-                      Nenhum modelo cadastrado para este tipo. Acesse o Admin → Modelos para adicionar.
+                    </datalist>
+                    {selected.model?.name && (
+                      <button
+                        onClick={() => setSelected(p => ({ ...p, model: null }))}
+                        style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16 }}
+                        title="Limpar">
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  {modelsToShow.length > 0 && (
+                    <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                      💡 Modelos cadastrados: {modelsToShow.map(m => m.name).join(', ')}
                     </p>
                   )}
                 </div>

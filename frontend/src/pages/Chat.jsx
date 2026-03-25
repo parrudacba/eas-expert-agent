@@ -566,16 +566,24 @@ export default function Chat() {
     treeStartedRef.current = false
 
     // Modelo pré-selecionado no Dashboard → pula árvore e ativa RAG direto
-    const preModel = location.state?.model
+    const preModel  = location.state?.model
+    const preMfr    = location.state?.manufacturer
     if (preModel) {
       treeStartedRef.current = true  // bloqueia tree init
       setMessages([{
         role: 'assistant',
-        content: `⚙️ **${preModel.name}**${preModel.model_code ? ` (${preModel.model_code})` : ''}\n\nEstou pronto para responder com base na documentação deste modelo. Como posso ajudar?`,
+        content: `⚙️ **${preModel.name}**\n\nEstou pronto para responder com base na documentação deste modelo. Como posso ajudar?`,
         quickReplies: QR_INICIAIS.map(label => ({ label })),
         created_at: new Date()
       }])
-      setSelectedDoc({ id: '__model__', modelId: preModel.id, type: 'model', title: preModel.name })
+      setSelectedDoc({
+        id:             '__model__',
+        modelId:        preModel.id   || null,   // null = modelo texto livre (sem ID no DB)
+        modelName:      preModel.name,
+        manufacturerId: preMfr?.id    || null,
+        type:           'model',
+        title:          preModel.name
+      })
       return
     }
 
@@ -852,10 +860,22 @@ export default function Chat() {
     if (!msg || !sessionId || loading || !selectedDoc || selectedDoc.id === '__history__') return
     setInput('')
 
-    // Contexto: documento específico (árvore completa) ou modelo (árvore de categorias)
-    const msgContext = selectedDoc.type === 'model'
-      ? { equipmentModelId: selectedDoc.modelId }
-      : { documentId: selectedDoc.id }
+    // Contexto: documento específico, modelo com ID no banco, ou modelo por texto livre
+    let msgContext
+    if (selectedDoc.type === 'model') {
+      if (selectedDoc.modelId) {
+        // Modelo cadastrado → filtra RAG pelo ID do modelo
+        msgContext = { equipmentModelId: selectedDoc.modelId }
+      } else {
+        // Modelo texto livre → filtra RAG pelo fabricante + informa nome ao agente
+        msgContext = {
+          manufacturerId: selectedDoc.manufacturerId,
+          modelName:      selectedDoc.modelName
+        }
+      }
+    } else {
+      msgContext = { documentId: selectedDoc.id }
+    }
 
     setMessages(m => [...m, { role: 'user', content: msg, created_at: new Date() }])
     setLoading(true)

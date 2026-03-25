@@ -203,7 +203,11 @@ export const agentService = {
       }
     } else {
       // Sem documento selecionado → busca por palavras-chave na base
-      ragContext = await ragService.search(userMessage, {
+      // Quando modelo é texto livre, inclui o nome do modelo como prefixo da query
+      const searchQuery = context?.modelName
+        ? `${context.modelName} ${userMessage}`
+        : userMessage
+      ragContext = await ragService.search(searchQuery, {
         specialtyId:    context?.specialtyId,
         technologyId:   context?.technologyId,
         manufacturerId: context?.manufacturerId,
