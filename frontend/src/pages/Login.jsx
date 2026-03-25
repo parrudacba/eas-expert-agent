@@ -268,10 +268,21 @@ export default function Login() {
           setResendCooldown(remaining);
           const t = setInterval(() => setResendCooldown(v => { if (v <= 1) { clearInterval(t); return 0; } return v - 1; }), 1000);
         } else {
-          // Envio do link — exibe erro se falhar para o usuário poder reenviar
+          // Envio do link
           sendDeviceOtp(cleanEmail)
             .then(() => { markOtpSent(cleanEmail); startResendCooldown(); })
-            .catch((err) => { setError('Erro ao enviar link: ' + (err?.message || 'tente reenviar')); });
+            .catch((err) => {
+              const isRateLimit = err?.message?.toLowerCase().includes('rate limit') || err?.status === 429;
+              if (isRateLimit) {
+                // Marca como enviado para evitar novas tentativas e inicia cooldown longo
+                markOtpSent(cleanEmail);
+                setResendCooldown(180);
+                const t = setInterval(() => setResendCooldown(v => { if (v <= 1) { clearInterval(t); return 0; } return v - 1; }), 1000);
+                setError('Limite de envios atingido. Aguarde 3 minutos para reenviar ou verifique se um link anterior chegou no email.');
+              } else {
+                setError('Erro ao enviar link. Use o botão Reenviar para tentar novamente.');
+              }
+            });
         }
       } else {
         checkingDeviceRef.current = false;
@@ -313,10 +324,16 @@ export default function Login() {
       await sendDeviceOtp(pendingEmail);
       markOtpSent(pendingEmail);
       startResendCooldown();
-      setCodeDigits(['', '', '', '', '', '']);
-      setTimeout(() => digitRefs[0].current?.focus(), 50);
     } catch (err) {
-      setError("Erro ao reenviar código. Tente novamente.");
+      const isRateLimit = err?.message?.toLowerCase().includes('rate limit') || err?.status === 429;
+      if (isRateLimit) {
+        markOtpSent(pendingEmail);
+        setResendCooldown(180);
+        const t = setInterval(() => setResendCooldown(v => { if (v <= 1) { clearInterval(t); return 0; } return v - 1; }), 1000);
+        setError('Limite atingido. Aguarde 3 minutos ou verifique se um link anterior já chegou no email.');
+      } else {
+        setError('Erro ao reenviar. Tente novamente em instantes.');
+      }
     } finally {
       setLoading(false);
     }
