@@ -167,12 +167,15 @@ export default function Login() {
   const d0 = useRef(null), d1 = useRef(null), d2 = useRef(null);
   const d3 = useRef(null), d4 = useRef(null), d5 = useRef(null);
   const digitRefs = [d0, d1, d2, d3, d4, d5];
+  // Ref síncrono: impede redirect automático enquanto handleLogin processa o dispositivo
+  const checkingDeviceRef = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Se usuário autenticou via magic link (clicou no email), redireciona direto
+  // Redireciona quando user é setado via magic link (clique no email) ou sessão existente
+  // checkingDeviceRef bloqueia esse redirect durante o handleLogin normal
   useEffect(() => {
-    if (user && mode !== 'verify-device') navigate('/');
+    if (user && !checkingDeviceRef.current) navigate('/');
   }, [user]);
 
   const startResendCooldown = () => {
@@ -227,6 +230,7 @@ export default function Login() {
     e.preventDefault();
     setError("");
     setLoading(true);
+    checkingDeviceRef.current = true; // bloqueia redirect do useEffect durante a verificação
     try {
       const { user: loggedUser } = await signInWithPassword(email, password);
       if (loggedUser && !isDeviceTrusted(loggedUser.id)) {
@@ -236,9 +240,11 @@ export default function Login() {
         startResendCooldown();
         setMode("verify-device");
       } else {
+        checkingDeviceRef.current = false;
         navigate("/");
       }
     } catch (err) {
+      checkingDeviceRef.current = false;
       setError(err.message || "Email ou senha incorretos.");
     } finally {
       setLoading(false);
