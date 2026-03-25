@@ -44,7 +44,7 @@ function trustDevice(userId) {
 }
 
 // Controle de rate limit local — evita chamar sendDeviceOtp se email foi enviado há < 60s
-const OTP_COOLDOWN_MS = 60_000
+const OTP_COOLDOWN_MS = 3 * 60_000 // 3 minutos — alinha com rate limit do Supabase
 function getOtpCooldownRemaining(email) {
   try {
     const t = JSON.parse(localStorage.getItem('eas_otp_sent') || '{}')
@@ -151,7 +151,7 @@ function ParticlesBackground() {
 
 // ─── Componente principal ──────────────────────────────────────
 export default function Login() {
-  const { user, signInWithPassword, sendOtp, verifyOtp, updatePassword, sendDeviceOtp } = useAuth();
+  const { user, signInWithPassword, sendOtp, verifyOtp, updatePassword, sendDeviceOtp, signOut } = useAuth();
   const navigate = useNavigate();
 
   // mode: "login" | "signup" | "request-access" | "forgot-password" | "reset-password"
@@ -251,17 +251,30 @@ export default function Login() {
     try {
       const { user: loggedUser } = await signInWithPassword(email, password);
       if (loggedUser && !isDeviceTrusted(loggedUser.id)) {
+        const userId = loggedUser.id;
+        // Faz logout imediato — impede acesso ao dashboard se o usuário atualizar a página
+        await signOut();
         setPendingEmail(email);
-        setPendingUserId(loggedUser.id);
+        setPendingUserId(userId);
         const remaining = getOtpCooldownRemaining(email);
         if (remaining > 0) {
-          // Email já enviado recentemente — apenas mostra a tela com o cooldown restante
+          // Email enviado recentemente — mostra tela com cooldown restante sem chamar Supabase
           setResendCooldown(remaining);
           const t = setInterval(() => setResendCooldown(v => { if (v <= 1) { clearInterval(t); return 0; } return v - 1; }), 1000);
         } else {
-          await sendDeviceOtp(email);
-          markOtpSent(email);
-          startResendCooldown();
+          try {
+            await sendDeviceOtp(email);
+            markOtpSent(email);
+            startResendCooldown();
+          } catch (err) {
+            // Rate limit do Supabase — mostra tela assim mesmo (código pode ter chegado antes)
+            if (err.message?.toLowerCase().includes('rate limit') || err.status === 429) {
+              const t2 = setInterval(() => setResendCooldown(v => { if (v <= 1) { clearInterval(t2); return 0; } return v - 1; }), 1000);
+              setResendCooldown(180);
+            } else {
+              throw err;
+            }
+          }
         }
         setMode("verify-device");
       } else {
