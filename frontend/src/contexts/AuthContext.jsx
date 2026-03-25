@@ -27,9 +27,19 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Login com email + senha
+  // Login com email + senha — retorna { user, session }
   const signInWithPassword = async (email, password) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) throw error
+    return data
+  }
+
+  // Enviar OTP para verificação de dispositivo (sem emailRedirectTo → código numérico)
+  const sendDeviceOtp = async (email) => {
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: false }
+    })
     if (error) throw error
   }
 
@@ -78,6 +88,7 @@ export function AuthProvider({ children }) {
       verifyOtp,
       updatePassword,
       signInWithEmail,
+      sendDeviceOtp,
       signOut
     }}>
       {children}

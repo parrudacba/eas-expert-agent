@@ -10,6 +10,39 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
+// ─── Helpers de dispositivo ───────────────────────────────────
+function getDeviceInfo() {
+  const ua = navigator.userAgent
+  let browser = 'Navegador'
+  if (/Edg\//.test(ua))    browser = 'Edge'
+  else if (/Chrome/.test(ua))   browser = 'Chrome'
+  else if (/Firefox/.test(ua))  browser = 'Firefox'
+  else if (/Safari/.test(ua))   browser = 'Safari'
+  let os = 'dispositivo desconhecido'
+  if (/Windows/.test(ua))       os = 'Windows'
+  else if (/Android/.test(ua))  os = 'Android'
+  else if (/iPhone|iPad/.test(ua)) os = 'iOS'
+  else if (/Mac/.test(ua))      os = 'macOS'
+  else if (/Linux/.test(ua))    os = 'Linux'
+  return `${browser} no ${os}`
+}
+
+function isDeviceTrusted(userId) {
+  try {
+    const t = JSON.parse(localStorage.getItem('eas_trusted_devices') || '{}')
+    const exp = t[userId]
+    return !!exp && Date.now() < exp
+  } catch { return false }
+}
+
+function trustDevice(userId) {
+  try {
+    const t = JSON.parse(localStorage.getItem('eas_trusted_devices') || '{}')
+    t[userId] = Date.now() + 90 * 24 * 60 * 60 * 1000 // 90 dias
+    localStorage.setItem('eas_trusted_devices', JSON.stringify(t))
+  } catch {}
+}
+
 // ─── Validação de CPF ─────────────────────────────────────────
 function validateCPF(cpf) {
   const cleaned = cpf.replace(/\D/g, '');
@@ -101,7 +134,7 @@ function ParticlesBackground() {
 
 // ─── Componente principal ──────────────────────────────────────
 export default function Login() {
-  const { signInWithPassword, sendOtp, verifyOtp, updatePassword } = useAuth();
+  const { signInWithPassword, sendOtp, verifyOtp, updatePassword, sendDeviceOtp } = useAuth();
   const navigate = useNavigate();
 
   // mode: "login" | "signup" | "request-access" | "forgot-password" | "reset-password"
@@ -126,8 +159,43 @@ export default function Login() {
   const [cpfError, setCpfError] = useState("");
   const [phoneError, setPhoneError] = useState("");
   const [mounted, setMounted] = useState(false);
+  // ── Verificação de dispositivo ────────────────────────────────
+  const [codeDigits, setCodeDigits] = useState(['', '', '', '', '', '']);
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [pendingUserId, setPendingUserId] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const d0 = useRef(null), d1 = useRef(null), d2 = useRef(null);
+  const d3 = useRef(null), d4 = useRef(null), d5 = useRef(null);
+  const digitRefs = [d0, d1, d2, d3, d4, d5];
 
   useEffect(() => { setMounted(true); }, []);
+
+  const startResendCooldown = () => {
+    setResendCooldown(60);
+    const t = setInterval(() => setResendCooldown(v => { if (v <= 1) { clearInterval(t); return 0; } return v - 1; }), 1000);
+  };
+
+  const handleDigitInput = (i, value) => {
+    const digit = value.replace(/\D/g, '').slice(-1);
+    const next = [...codeDigits]; next[i] = digit; setCodeDigits(next);
+    if (digit && i < 5) digitRefs[i + 1].current?.focus();
+  };
+
+  const handleDigitKeyDown = (i, e) => {
+    if (e.key === 'Backspace' && !codeDigits[i] && i > 0) {
+      const next = [...codeDigits]; next[i - 1] = ''; setCodeDigits(next);
+      digitRefs[i - 1].current?.focus();
+    }
+  };
+
+  const handleDigitPaste = (e) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    const next = ['', '', '', '', '', ''];
+    for (let i = 0; i < pasted.length; i++) next[i] = pasted[i];
+    setCodeDigits(next);
+    digitRefs[Math.min(pasted.length, 5)].current?.focus();
+  };
 
   const handleCpfChange = (v) => {
     const f = formatCPF(v);
@@ -155,10 +223,54 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await signInWithPassword(email, password);
-      navigate("/");
+      const { user: loggedUser } = await signInWithPassword(email, password);
+      if (loggedUser && !isDeviceTrusted(loggedUser.id)) {
+        setPendingEmail(email);
+        setPendingUserId(loggedUser.id);
+        await sendDeviceOtp(email);
+        startResendCooldown();
+        setMode("verify-device");
+      } else {
+        navigate("/");
+      }
     } catch (err) {
       setError(err.message || "Email ou senha incorretos.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Verificar código do dispositivo ──────────────────────────
+  const handleVerifyDevice = async (e) => {
+    e.preventDefault();
+    const code = codeDigits.join('');
+    if (code.length < 6) return;
+    setError("");
+    setLoading(true);
+    try {
+      await verifyOtp(pendingEmail, code);
+      trustDevice(pendingUserId);
+      navigate("/");
+    } catch {
+      setError("Código inválido ou expirado. Solicite um novo código.");
+      setCodeDigits(['', '', '', '', '', '']);
+      setTimeout(() => digitRefs[0].current?.focus(), 50);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendDeviceCode = async () => {
+    if (resendCooldown > 0) return;
+    setError("");
+    setLoading(true);
+    try {
+      await sendDeviceOtp(pendingEmail);
+      startResendCooldown();
+      setCodeDigits(['', '', '', '', '', '']);
+      setTimeout(() => digitRefs[0].current?.focus(), 50);
+    } catch (err) {
+      setError("Erro ao reenviar código. Tente novamente.");
     } finally {
       setLoading(false);
     }
@@ -377,6 +489,109 @@ export default function Login() {
           </div>
 
           <AnimatePresence mode="wait">
+
+            {/* ── Verificação de Dispositivo ── */}
+            {mode === "verify-device" && (
+              <motion.div
+                key="verify-device"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+              >
+                {/* Ícone + título */}
+                <div className="text-center mb-6">
+                  <motion.div
+                    className="w-16 h-16 bg-gradient-to-br from-cyan-600 to-blue-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-[0_0_30px_rgba(0,212,255,0.3)]"
+                    animate={{ boxShadow: ["0 0 20px rgba(0,212,255,0.3)", "0 0 40px rgba(0,212,255,0.5)", "0 0 20px rgba(0,212,255,0.3)"] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  >
+                    <Shield className="w-8 h-8 text-white" />
+                  </motion.div>
+                  <h2 className="text-xl font-bold text-white mb-1">Verificação de Dispositivo</h2>
+                  <p className="text-slate-400 text-sm">
+                    Detectamos um novo acesso de: <span className="text-white font-medium">{getDeviceInfo()}</span>
+                  </p>
+                </div>
+
+                {/* Info do código enviado */}
+                <div className="bg-cyan-950/50 border border-cyan-500/30 rounded-xl p-4 mb-6">
+                  <div className="flex items-start gap-3">
+                    <Mail className="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-cyan-200/80">
+                      Enviamos um código de 6 dígitos para <strong className="text-white">{pendingEmail}</strong>
+                    </p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleVerifyDevice} className="space-y-5">
+                  {/* 6 caixas de dígito */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-3 text-center">
+                      Digite o código recebido
+                    </label>
+                    <div className="flex gap-2 justify-center">
+                      {codeDigits.map((digit, i) => (
+                        <input
+                          key={i}
+                          ref={digitRefs[i]}
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={1}
+                          value={digit}
+                          onChange={e => handleDigitInput(i, e.target.value)}
+                          onKeyDown={e => handleDigitKeyDown(i, e)}
+                          onPaste={handleDigitPaste}
+                          autoFocus={i === 0}
+                          className={`w-11 h-14 text-center text-2xl font-bold rounded-xl border-2 bg-slate-900/70 text-white outline-none transition-all
+                            ${digit
+                              ? 'border-cyan-500 bg-cyan-950/40 shadow-[0_0_12px_rgba(0,212,255,0.25)]'
+                              : 'border-slate-700 focus:border-cyan-500 focus:shadow-[0_0_12px_rgba(0,212,255,0.2)]'
+                            }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="bg-red-950/50 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl text-sm text-center">
+                      {error}
+                    </div>
+                  )}
+
+                  <motion.button
+                    type="submit"
+                    disabled={loading || codeDigits.join('').length < 6}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:from-slate-600 disabled:to-slate-600 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(0,212,255,0.3)]"
+                  >
+                    {loading
+                      ? <><Loader2 className="w-5 h-5 animate-spin" /> Verificando...</>
+                      : <><CheckCircle className="w-5 h-5" /> Verificar Código</>
+                    }
+                  </motion.button>
+
+                  {/* Reenviar */}
+                  <div className="text-center">
+                    <span className="text-slate-500 text-sm">Não recebeu o código? </span>
+                    {resendCooldown > 0 ? (
+                      <span className="text-slate-500 text-sm">Reenviar em {resendCooldown}s</span>
+                    ) : (
+                      <button type="button" onClick={handleResendDeviceCode}
+                        className="text-cyan-400 hover:text-cyan-300 text-sm font-medium transition-colors">
+                        Reenviar código
+                      </button>
+                    )}
+                  </div>
+
+                  <button type="button"
+                    onClick={() => { setMode("login"); setError(""); setCodeDigits(['','','','','','']); }}
+                    className="w-full text-slate-400 hover:text-slate-300 font-medium py-2 transition-colors flex items-center justify-center gap-1 text-sm">
+                    <ArrowLeft className="w-4 h-4" /> Voltar para o login
+                  </button>
+                </form>
+              </motion.div>
+            )}
 
             {/* ── Solicitar Acesso ── */}
             {mode === "request-access" && (
