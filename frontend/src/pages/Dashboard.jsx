@@ -189,7 +189,7 @@ export default function Dashboard() {
   // ── Sumários para linhas colapsadas ────────────────────────────────────────
   const modeSummary   = mode === 'support' ? '🔧 Suporte Técnico' : mode === 'training' ? '🎓 Treinamento' : null
   const spSummary     = selected.specialty ? `${ICONS[selected.specialty.slug] || '📋'} ${selected.specialty.name}` : null
-  const techSummary   = selected.technology ? `${selected.technology.name}${selected.technology.frequency ? ` · ${selected.technology.frequency}` : ''}` : null
+  const techSummary   = selected.technology ? (selected.technology.frequency || selected.technology.name) : null
   const mfrSummary    = selected.manufacturer?.name || null
   const catSummary    = selected.category ? `${categoriesWithModels.find(c => c.name === selected.category)?.icon || '📦'} ${selected.category}` : null
 
@@ -287,9 +287,8 @@ export default function Dashboard() {
                 <div style={S.chipGroup}>
                   {selected.specialty?.technologies?.map(t => (
                     <button key={t.id} onClick={() => selectTechnology(t)}
-                      style={{ ...S.chip, ...(selected.technology?.id === t.id ? S.chipActive : {}) }}>
-                      {t.frequency && <span style={S.badge}>{t.frequency}</span>}
-                      <span>{t.name}</span>
+                      style={{ ...S.chip, ...(selected.technology?.id === t.id ? S.chipActive : {}), fontWeight: 700, letterSpacing: '0.03em' }}>
+                      {t.frequency || t.name}
                     </button>
                   ))}
                 </div>
