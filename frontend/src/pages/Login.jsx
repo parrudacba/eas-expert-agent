@@ -44,7 +44,7 @@ function trustDevice(userId) {
 }
 
 // Controle de rate limit local — evita chamar sendDeviceOtp se email foi enviado há < 60s
-const OTP_COOLDOWN_MS = 3 * 60_000 // 3 minutos — alinha com rate limit do Supabase
+const OTP_COOLDOWN_MS = 60_000 // 60 segundos
 function getOtpCooldownRemaining(email) {
   try {
     const t = JSON.parse(localStorage.getItem('eas_otp_sent') || '{}')
@@ -195,8 +195,8 @@ export default function Login() {
     if (user && !checkingDeviceRef.current) navigate('/');
   }, [user]);
 
-  const startResendCooldown = () => {
-    setResendCooldown(60);
+  const startResendCooldown = (seconds = 60) => {
+    setResendCooldown(seconds);
     const t = setInterval(() => setResendCooldown(v => { if (v <= 1) { clearInterval(t); return 0; } return v - 1; }), 1000);
   };
 
@@ -277,21 +277,21 @@ export default function Login() {
           setResendCooldown(remaining);
           const t = setInterval(() => setResendCooldown(v => { if (v <= 1) { clearInterval(t); return 0; } return v - 1; }), 1000);
         } else {
-          // Envio do link
-          sendDeviceOtp(cleanEmail)
-            .then(() => { markOtpSent(cleanEmail); startResendCooldown(); })
-            .catch((err) => {
-              const isRateLimit = err?.message?.toLowerCase().includes('rate limit') || err?.status === 429;
-              if (isRateLimit) {
-                // Marca como enviado para evitar novas tentativas e inicia cooldown longo
-                markOtpSent(cleanEmail);
-                setResendCooldown(180);
-                const t = setInterval(() => setResendCooldown(v => { if (v <= 1) { clearInterval(t); return 0; } return v - 1; }), 1000);
-                setError('Limite de envios atingido. Aguarde 3 minutos para reenviar ou verifique se um link anterior chegou no email.');
-              } else {
-                setError('Erro ao enviar link. Use o botão Reenviar para tentar novamente.');
-              }
-            });
+          // Envio do link — aguarda resposta para dar feedback correto
+          try {
+            await sendDeviceOtp(cleanEmail);
+            markOtpSent(cleanEmail);
+            startResendCooldown();
+          } catch (err) {
+            const isRateLimit = err?.message?.toLowerCase().includes('rate limit') || err?.status === 429;
+            if (isRateLimit) {
+              markOtpSent(cleanEmail);
+              startResendCooldown(60);
+              setError('Limite de envios atingido. Aguarde 60s e use o botão Reenviar.');
+            } else {
+              setError('Erro ao enviar link: ' + (err?.message || 'use o botão Reenviar'));
+            }
+          }
         }
       } else {
         checkingDeviceRef.current = false;
@@ -337,9 +337,8 @@ export default function Login() {
       const isRateLimit = err?.message?.toLowerCase().includes('rate limit') || err?.status === 429;
       if (isRateLimit) {
         markOtpSent(pendingEmail);
-        setResendCooldown(180);
-        const t = setInterval(() => setResendCooldown(v => { if (v <= 1) { clearInterval(t); return 0; } return v - 1; }), 1000);
-        setError('Limite atingido. Aguarde 3 minutos ou verifique se um link anterior já chegou no email.');
+        startResendCooldown(60);
+        setError('Limite atingido. Aguarde 60s e tente novamente.');
       } else {
         setError('Erro ao reenviar. Tente novamente em instantes.');
       }
@@ -613,21 +612,32 @@ export default function Login() {
                 </div>
 
                 {error && (
-                  <div className="bg-red-950/50 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl text-sm mb-4">
+                  <div className="bg-red-950/50 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl text-sm mb-4 text-center">
                     {error}
                   </div>
                 )}
 
-                {/* Reenviar */}
+                {/* Botão reenviar — elemento principal da tela */}
                 <div className="mb-4">
                   {resendCooldown > 0 ? (
-                    <p className="text-slate-500 text-sm">Reenviar link em {resendCooldown}s</p>
+                    <div className="w-full py-3 rounded-xl border border-slate-700 bg-slate-800/50 text-slate-400 text-sm text-center flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Reenviar disponível em {resendCooldown}s
+                    </div>
                   ) : (
-                    <button type="button" onClick={handleResendDeviceCode} disabled={loading}
-                      className="text-cyan-400 hover:text-cyan-300 text-sm font-medium transition-colors flex items-center gap-1 mx-auto">
-                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                      Reenviar link de verificação
-                    </button>
+                    <motion.button
+                      type="button"
+                      onClick={handleResendDeviceCode}
+                      disabled={loading}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:from-slate-600 disabled:to-slate-600 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(0,212,255,0.3)]"
+                    >
+                      {loading
+                        ? <><Loader2 className="w-5 h-5 animate-spin" /> Enviando...</>
+                        : <><Send className="w-5 h-5" /> Enviar link de verificação</>
+                      }
+                    </motion.button>
                   )}
                 </div>
 
