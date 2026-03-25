@@ -268,10 +268,10 @@ export default function Login() {
           setResendCooldown(remaining);
           const t = setInterval(() => setResendCooldown(v => { if (v <= 1) { clearInterval(t); return 0; } return v - 1; }), 1000);
         } else {
-          // Fire-and-forget — falha no envio não bloqueia a tela
+          // Envio do link — exibe erro se falhar para o usuário poder reenviar
           sendDeviceOtp(cleanEmail)
             .then(() => { markOtpSent(cleanEmail); startResendCooldown(); })
-            .catch(() => { /* rate limit ou outro erro — usuário pode usar reenviar */ });
+            .catch((err) => { setError('Erro ao enviar link: ' + (err?.message || 'tente reenviar')); });
         }
       } else {
         checkingDeviceRef.current = false;
@@ -565,10 +565,10 @@ export default function Login() {
                     <Mail className="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" />
                     <div>
                       <p className="text-sm text-cyan-200/90 leading-relaxed">
-                        Enviamos um <strong className="text-white">link de verificação</strong> para{' '}
-                        <strong className="text-white">{pendingEmail}</strong>.
+                        Enviamos um <strong className="text-white">link de verificação</strong> para:
                       </p>
-                      <p className="text-sm text-slate-400 mt-1">
+                      <p className="text-white font-semibold text-sm mt-1 break-all">{pendingEmail}</p>
+                      <p className="text-sm text-slate-400 mt-2">
                         Abra o email e clique no link para confirmar o acesso neste dispositivo.
                       </p>
                     </div>
